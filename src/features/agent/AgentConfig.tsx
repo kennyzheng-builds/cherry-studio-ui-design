@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import {
   ArrowLeft, Save, Settings, FileText,
-  Wrench, SlidersHorizontal, ChevronRight, ChevronDown,
+  Wrench, SlidersHorizontal, ChevronDown,
   X, Check, Plus, Trash2,
   RefreshCw, CheckCircle2, Circle, AlertTriangle,
   Search, ExternalLink, Power,
@@ -55,10 +55,8 @@ export function AgentConfig({ resource, onBack }: Props) {
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex items-center gap-3 px-5 py-3 border-b border-border/15 flex-shrink-0">
         <button onClick={onBack} className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-accent/40 transition-colors"><ArrowLeft size={14} /></button>
-        <div className="flex items-center gap-1 text-[10px] text-muted-foreground/50">
-          <span className="hover:text-foreground cursor-pointer transition-colors" onClick={onBack}>{"资源库"}</span>
-          <ChevronRight size={9} /><span className="text-foreground">{resource.name}</span>
-          <span className="text-muted-foreground/35 ml-1">{"(智能体)"}</span>
+        <div className="flex items-center gap-1 text-[11px] text-foreground">
+          <span>{resource.name}</span>
         </div>
         <div className="flex-1" />
         <AnimatePresence>

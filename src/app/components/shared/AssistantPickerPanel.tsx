@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
-  Search, X, Check, Plus, ChevronRight,
+  Search, X, Check, Plus,
 } from 'lucide-react';
 import { MOCK_ASSISTANTS, ASSISTANT_EMOJI_MAP } from '@/app/mock';
 
@@ -137,8 +137,7 @@ export function AssistantPickerPanel({
           className="w-full flex items-center gap-2 px-2 py-[5px] text-[11px] text-muted-foreground hover:text-popover-foreground hover:bg-accent/50 rounded-lg transition-colors"
         >
           <Plus size={13} strokeWidth={1.5} className="flex-shrink-0" />
-          <span className="flex-1 text-left">去资源库创建</span>
-          <ChevronRight size={12} />
+          <span className="flex-1 text-left">新建助手</span>
         </button>
       </div>
     </div>

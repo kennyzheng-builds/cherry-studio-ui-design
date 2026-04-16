@@ -1,22 +1,25 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useGlobalActions } from '@/app/context/GlobalActionContext';
+import { useIsFloatingWindow } from '@/app/context/FloatingWindowContext';
 import {
   ArrowLeft, ChevronDown, ChevronRight, FolderOpen,
-  Bot, Circle, Columns2,
-  Sparkles, Plus, ArrowUp,
-  FileText, Zap, Search as SearchIcon, BookOpen, History,
+  Bot, Circle, PanelRight,
+  Sparkles, Plus,
+  FileText, Zap, Search as SearchIcon, History,
   Code2, Folder, Tag,
   X,
   Check,
   Edit3, Clock,
   Workflow, Cable, Layers,
   Compass, Wrench, PenTool,
+  PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Tooltip } from '@/app/components/Tooltip';
 import { ArtifactViewer } from './ArtifactViewer';
 import { EmptyState } from '@/app/components/ui/EmptyState';
 import { ChatPanel } from './ChatPanel';
+import { SessionSidebar } from './SessionSidebar';
 import type { AgentChatMessage, AgentSession, AgentSessionData } from '@/app/types/agent';
 import type { ModelCapability } from '@/app/types/chat';
 import { SessionHistoryPage } from './SessionHistoryPage';
@@ -187,145 +190,13 @@ function AgentPicker({
                   className="flex items-center gap-2 w-full px-2.5 py-[6px] rounded-md text-[10.5px] text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
                 >
                   <Plus size={10} className="flex-shrink-0" />
-                  <span>{"\u53bb\u8d44\u6e90\u5e93\u521b\u5efa"}</span>
-                  <ChevronRight size={9} className="ml-auto text-muted-foreground/40" />
+                  <span>{"\u65b0\u5efa\u667a\u80fd\u4f53"}</span>
                 </button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-    </div>
-  );
-}
-
-// ===========================
-// New Session Empty State
-// ===========================
-
-function NewSessionEmpty({ onSendMessage }: { onSendMessage: (text: string) => void }) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [input, setInput] = useState('');
-
-  const suggestions = [
-    { icon: Zap, label: '\u521b\u5efa React \u5168\u6808\u9879\u76ee', desc: 'Vite + TypeScript + Tailwind CSS' },
-    { icon: SearchIcon, label: 'AI \u6846\u67b6\u6280\u672f\u9009\u578b\u8c03\u7814', desc: '\u591a\u7ef4\u5bf9\u6bd4 + \u57fa\u51c6\u6d4b\u8bd5 + \u62a5\u544a\u8f93\u51fa' },
-    { icon: BookOpen, label: '\u6784\u5efa Dashboard \u770b\u677f', desc: 'Recharts \u56fe\u8868 + \u5b9e\u65f6\u6570\u636e\u6d41' },
-    { icon: FileText, label: '\u5b9e\u73b0\u7528\u6237\u8ba4\u8bc1\u7cfb\u7edf', desc: 'JWT + OAuth + Prisma + PostgreSQL' },
-  ];
-
-  const handleSend = () => {
-    if (input.trim()) {
-      onSendMessage(input.trim());
-      setInput('');
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-    const el = e.target;
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-  };
-
-  return (
-    <div className="flex flex-col h-full w-full items-center justify-center">
-      <div className="w-full max-w-[620px] px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35 }}
-          className="flex flex-col items-center w-full"
-        >
-          {/* Logo */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, delay: 0.05 }}
-            className="w-11 h-11 rounded-2xl bg-gradient-to-br from-cherry-primary/18 via-cherry-primary-hover/10 to-teal-500/8 border border-cherry-active-border flex items-center justify-center mb-4 shadow-lg shadow-cherry-shadow-sm"
-          >
-            <Sparkles size={18} strokeWidth={1.2} className="text-cherry-text-muted" />
-          </motion.div>
-          <h2 className="text-[13px] text-foreground/90 tracking-[-0.02em]">{"\u9700\u8981\u6211\u5e2e\u4f60\u6784\u5efa\u4ec0\u4e48\uff1f"}</h2>
-          <p className="text-[10px] text-muted-foreground/45 text-center leading-[1.6] mt-1.5 mb-5">
-            {"\u63cf\u8ff0\u4f60\u60f3\u8981\u6784\u5efa\u7684\u5185\u5bb9\uff0cAI \u5c06\u4e3a\u4f60\u5b8c\u6210\u5168\u8fc7\u7a0b"}
-          </p>
-
-          {/* Input area — centered */}
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-            className="w-full mb-5"
-          >
-            <div className="relative rounded-2xl border border-border/40 bg-card/80 shadow-sm shadow-black/5 focus-within:border-border/70 focus-within:shadow-md focus-within:shadow-black/8 transition-all duration-200">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={handleInput}
-                onKeyDown={handleKeyDown}
-                placeholder={"\u8bf7\u8f93\u5165\u4f60\u60f3\u8981\u4e86\u89e3\u7684\u95ee\u9898"}
-                rows={1}
-                autoFocus
-                className="w-full bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground/35 outline-none resize-none min-h-[44px] max-h-[120px] leading-[1.6] px-4 pt-3.5 pb-[38px]"
-              />
-              <div className="absolute bottom-[8px] left-3 right-3 flex items-center justify-between">
-                <div className="flex items-center gap-0.5">
-                  <Tooltip content={"\u6dfb\u52a0"} side="top"><button className="p-[4px] rounded-lg text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-accent/15 transition-colors">
-                    <Plus size={13} />
-                  </button></Tooltip>
-                  <Tooltip content={"\u4ee3\u7801"} side="top"><button className="p-[4px] rounded-lg text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-accent/15 transition-colors">
-                    <Code2 size={12} />
-                  </button></Tooltip>
-                  <Tooltip content={"\u6dfb\u52a0\u6587\u4ef6\u5939"} side="top"><button className="p-[4px] rounded-lg text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-accent/15 transition-colors">
-                    <Folder size={12} />
-                  </button></Tooltip>
-                </div>
-                <button
-                  onClick={handleSend}
-                  disabled={!input.trim()}
-                  className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-150 ${
-                    input.trim()
-                      ? 'bg-cherry-primary text-white hover:bg-cherry-primary-hover active:scale-[0.92] shadow-sm shadow-cherry-shadow'
-                      : 'bg-accent/50 text-muted-foreground/25 cursor-not-allowed'
-                  }`}
-                >
-                  <ArrowUp size={13} strokeWidth={2} />
-                </button>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Suggestions — below input, horizontal grid */}
-          <div className="grid grid-cols-2 gap-2 w-full">
-            {suggestions.map((s, i) => (
-              <motion.button
-                key={i}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, delay: 0.15 + i * 0.03 }}
-                onClick={() => onSendMessage(s.label)}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-border/20 hover:border-border/40 bg-card/30 hover:bg-card/60 transition-all duration-150 text-left group"
-              >
-                <div className="w-6 h-6 rounded-md bg-accent/20 flex items-center justify-center flex-shrink-0 group-hover:bg-cherry-active-bg transition-colors">
-                  <s.icon size={11} strokeWidth={1.5} className="text-muted-foreground/50 group-hover:text-cherry-primary transition-colors" />
-                </div>
-                <div className="flex flex-col gap-0 min-w-0">
-                  <span className="text-[10.5px] text-foreground/65 group-hover:text-foreground/85 transition-colors truncate">{s.label}</span>
-                  <span className="text-[9px] text-muted-foreground/35 leading-[1.3] truncate">{s.desc}</span>
-                </div>
-              </motion.button>
-            ))}
-          </div>
-        </motion.div>
-      </div>
     </div>
   );
 }
@@ -964,6 +835,10 @@ export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void
   }, [activeProvider, mdlSearch, mdlCapFilter]);
   const [showPreview, setShowPreview] = useState(!!initialSessionId);
   const [showHistory, setShowHistory] = useState(false);
+  // Collapsible left session list (mirror real Cherry Studio). Hidden in
+  // floating popouts since a popout is a single-session window.
+  const [showSessionList, setShowSessionList] = useState(true);
+  const isFloating = useIsFloatingWindow();
   const [selectedAgent, setSelectedAgent] = useState(AVAILABLE_AGENTS[0]);
   const [previewMaximized, setPreviewMaximized] = useState(false);
   const [showAgentInfo, setShowAgentInfo] = useState(false);
@@ -1054,6 +929,13 @@ export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void
       setActiveFile(null);
     }
   }, [activeSessionId]);
+
+  const handleNewSession = useCallback(() => {
+    setActiveSessionId(null);
+    setShowPreview(false);
+    setOpenedFiles([]);
+    setActiveFile(null);
+  }, []);
 
   const handleUpdateSession = useCallback((id: string, updates: Partial<AgentSession>) => {
     setSessions(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
@@ -1155,6 +1037,22 @@ export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void
               className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors">
               <ArrowLeft size={13} />
             </button>
+          )}
+
+          {/* Session list toggle — mirror AssistantRunPage, hidden in floating */}
+          {!isFloating && (
+            <Tooltip content={showSessionList ? '收起会话列表' : '展开会话列表'} side="bottom">
+              <button
+                onClick={() => setShowSessionList(v => !v)}
+                className={`p-1.5 rounded transition-colors ${
+                  showSessionList
+                    ? 'text-foreground/80 bg-accent/25'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/15'
+                }`}
+              >
+                {showSessionList ? <PanelLeftClose size={13} /> : <PanelLeftOpen size={13} />}
+              </button>
+            </Tooltip>
           )}
 
           {/* Agent picker — always visible */}
@@ -1279,27 +1177,14 @@ export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void
             {sessionData.workDir || '~/projects'}
           </button>
 
-          {/* Session-specific controls — only when working */}
-          {hasMessages && (
+          {/* Running status indicator — session title now comes from the left list */}
+          {hasMessages && sessionData.workDir && (
             <div className="flex items-center gap-1.5">
               <div className="w-px h-3.5 bg-border/25" />
-
-              <CompactSessionSelector
-                sessions={sessions}
-                activeSession={activeSession}
-                onSelectSession={handleSelectSession}
-                onOpenHistory={() => setShowHistory(true)}
-              />
-
-              {sessionData.workDir && (
-                <div className="flex items-center gap-1.5">
-                  <div className="w-px h-3.5 bg-border/25" />
-                  <div className="flex items-center gap-1 text-[9px] text-cherry-primary-dark">
-                    <Circle size={5} className="fill-cherry-primary" />
-                    {activeSession?.status === 'active' ? '\u8fd0\u884c\u4e2d' : '\u5df2\u5b8c\u6210'}
-                  </div>
-                </div>
-              )}
+              <div className="flex items-center gap-1 text-[9px] text-cherry-primary-dark">
+                <Circle size={5} className="fill-cherry-primary" />
+                {activeSession?.status === 'active' ? '\u8fd0\u884c\u4e2d' : '\u5df2\u5b8c\u6210'}
+              </div>
             </div>
           )}
         </div>
@@ -1317,7 +1202,7 @@ export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void
               <div className="w-px h-3.5 bg-border/25 mx-0.5" />
               <Tooltip content={"\u6253\u5f00\u5de5\u4f5c\u9762\u677f"} side="bottom"><button onClick={() => setShowPreview(true)}
                 className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/15 transition-colors">
-                <Columns2 size={12} />
+                <PanelRight size={13} />
               </button></Tooltip>
             </div>
           )}
@@ -1332,23 +1217,61 @@ export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void
           - No per-session "explorer" column; file discovery happens via popover or chat mentions
       */}
       <div className="flex flex-1 min-h-0 gap-0">
-        {/* Chat column — occupies remaining width */}
+        {/* Leftmost: Session list (persistent, mirrors Cherry Studio) */}
+        <AnimatePresence initial={false}>
+          {showSessionList && !isFloating && !previewMaximized && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 224, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+              className="flex-shrink-0 overflow-hidden border-r border-border/30"
+            >
+              <div style={{ width: 224 }} className="h-full">
+                <SessionSidebar
+                  sessions={sessions}
+                  activeSessionId={activeSessionId}
+                  onSelectSession={handleSelectSession}
+                  onNewSession={handleNewSession}
+                  onDeleteSession={handleDeleteSession}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Chat column — occupies remaining width. Uses ChatPanel for both
+            empty and active states so the shell (composer at bottom, etc.)
+            is consistent with Chat / Assistant pages. */}
         {!previewMaximized && (
           <div
             className="flex-1 min-w-[320px] overflow-hidden"
           >
-            {!hasMessages ? (
-              <NewSessionEmpty onSendMessage={handleSendMessage} />
-            ) : (
-              <ChatPanel
-                messages={messages}
-                steps={sessionData.steps}
-                onSendMessage={handleSendMessage}
-                onResolveUI={handleResolveUI}
-                onAvatarClick={() => setShowAgentInfo(true)}
-                onOpenFile={handleOpenFile}
-              />
-            )}
+            <ChatPanel
+              messages={messages}
+              steps={sessionData.steps}
+              onSendMessage={handleSendMessage}
+              onResolveUI={handleResolveUI}
+              onAvatarClick={() => setShowAgentInfo(true)}
+              onOpenFile={handleOpenFile}
+              placeholder={hasMessages ? '输入消息...' : '描述你想要构建的内容...'}
+              emptyState={
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="flex flex-col items-center max-w-[360px] w-full"
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-b from-accent/60 to-accent/30 border border-border/30 flex items-center justify-center mb-5">
+                    <Sparkles size={22} strokeWidth={1.3} className="text-foreground/40" />
+                  </div>
+                  <h2 className="text-[14px] text-foreground tracking-[-0.01em]">需要我帮你构建什么？</h2>
+                  <p className="text-[11px] text-muted-foreground/60 text-center leading-[1.6] mt-1.5">
+                    向 {selectedAgent.name} 提问，支持生成代码、文档和可交付成果
+                  </p>
+                </motion.div>
+              }
+            />
           </div>
         )}
 
