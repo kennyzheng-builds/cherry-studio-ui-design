@@ -22,6 +22,11 @@ export interface ChatPanelProps {
   onAvatarClick?: () => void;
   /** Click handler for inline file-mention chips. Receives the file path. */
   onOpenFile?: (key: string) => void;
+  /** Rendered vertically-centered when there are no messages yet — mirrors the
+   *  Chat / Assistant empty-state pattern so the shell is consistent. */
+  emptyState?: React.ReactNode;
+  /** Composer placeholder override. */
+  placeholder?: string;
 }
 
 export function ChatPanel({
@@ -31,36 +36,45 @@ export function ChatPanel({
   onResolveUI,
   onAvatarClick,
   onOpenFile,
+  emptyState,
+  placeholder = '输入消息...',
 }: ChatPanelProps) {
   const grouped = useGroupedMessages(messages);
+  const isEmpty = grouped.length === 0;
 
   return (
     <div className="flex flex-col h-full">
-      <MessageList
-        scrollDeps={[messages.length]}
-        header={steps.length > 0 ? <WorkflowPanel steps={steps} /> : undefined}
-      >
-        {grouped.map((group) => {
-          if (group.type === 'user') {
-            return <UserMessage key={group.msg.id} msg={group.msg} onOpenFile={onOpenFile} />;
-          }
-          return (
-            <AgentMessageGroup
-              key={group.msgs[0].id}
-              msgs={group.msgs}
-              onResolve={onResolveUI ?? (() => {})}
-              onAvatarClick={onAvatarClick}
-              onOpenFile={onOpenFile}
-            />
-          );
-        })}
-      </MessageList>
+      {isEmpty && emptyState ? (
+        <div className="flex-1 flex items-center justify-center px-6 overflow-auto">
+          {emptyState}
+        </div>
+      ) : (
+        <MessageList
+          scrollDeps={[messages.length]}
+          header={steps.length > 0 ? <WorkflowPanel steps={steps} /> : undefined}
+        >
+          {grouped.map((group) => {
+            if (group.type === 'user') {
+              return <UserMessage key={group.msg.id} msg={group.msg} onOpenFile={onOpenFile} />;
+            }
+            return (
+              <AgentMessageGroup
+                key={group.msgs[0].id}
+                msgs={group.msgs}
+                onResolve={onResolveUI ?? (() => {})}
+                onAvatarClick={onAvatarClick}
+                onOpenFile={onOpenFile}
+              />
+            );
+          })}
+        </MessageList>
+      )}
 
       {/* Unified input: shared Composer (same frame as Chat / Assistant).
           maxHeight 220 ≈ 9 rows at 12px / 1.6 line-height + top/bottom padding. */}
       <Composer
         onSendMessage={onSendMessage}
-        placeholder="输入消息..."
+        placeholder={placeholder}
         maxHeight={220}
       />
     </div>

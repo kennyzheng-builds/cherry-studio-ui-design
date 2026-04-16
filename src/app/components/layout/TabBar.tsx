@@ -1,6 +1,6 @@
 import React, { useState, useRef, useLayoutEffect, useMemo } from 'react';
 import {
-  Plus, X, ChevronDown,
+  Plus, X, ChevronDown, Pin,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Tooltip } from '@/app/components/Tooltip';
@@ -18,16 +18,18 @@ interface TabBarProps {
 }
 
 // === Layout constants ===
-// Minimum width that still leaves ~4-5 chars of title visible. Below this,
-// rather than compressing further (Chrome-style), we route the least-recently-
-// used tab into the overflow menu so visible titles stay readable.
-const MIN_UNPINNED_WIDTH = 120;
-const MAX_UNPINNED_WIDTH = 180;
+// Min width that still leaves ~4 chars of title readable: 4 CJK chars
+// (~48px @ 12px) + icon (13) + close (18) + horizontal padding/gaps (~21).
+// Below this we push tabs to overflow rather than compressing further.
+const MIN_UNPINNED_WIDTH = 100;
+const MAX_UNPINNED_WIDTH = 160;
 const PINNED_WIDTH = 96;
 const PINNED_CONTAINER_PADDING = 8;
 const SEPARATOR_WIDTH = 10;
 const PLUS_BUTTON_WIDTH = 32;
-const OVERFLOW_BUTTON_WIDTH = 56;
+// Chevron + 2-digit count + padding ≈ 38–44px in practice; round up slightly
+// so we don't overflow the strip when count grows to 3 digits.
+const OVERFLOW_BUTTON_WIDTH = 44;
 
 export function TabBar({
   tabs,
@@ -144,6 +146,8 @@ export function TabBar({
                         : <div className="w-3.5 h-3.5 rounded-[3px] flex items-center justify-center text-white text-[6px] flex-shrink-0" style={{ background: tab.miniAppColor }}>{tab.miniAppInitial}</div>
                     ) : <Icon size={13} strokeWidth={1.6} className="flex-shrink-0" />}
                     <span className="text-[11px] truncate">{tab.title}</span>
+                    {/* Obsidian-style pin marker so users can tell at a glance the tab is pinned */}
+                    <Pin size={9} strokeWidth={2} className="flex-shrink-0 text-muted-foreground/60 -rotate-45 ml-px" fill="currentColor" />
                   </div>
                 </Tooltip>
               );

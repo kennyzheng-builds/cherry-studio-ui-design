@@ -171,35 +171,26 @@ export function SessionSidebar({ sessions, activeSessionId, onSelectSession, onN
 
   return (
     <div className="flex flex-col h-full select-none">
-      {/* Header */}
-      <div className="px-3 py-2.5 border-b border-border/10 flex-shrink-0">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5">
-            <Clock size={11} className="text-muted-foreground/40" />
-            <span className="text-[10px] text-muted-foreground/45 uppercase tracking-[0.06em]">{"会话"}</span>
-          </div>
-          <span className="text-[9px] text-muted-foreground/30 tabular-nums">{sessions.length}</span>
-        </div>
-
-        {/* New Session Button */}
+      {/* Top: new session — matches AssistantRunPage TopicListPanel styling */}
+      <div className="px-2 pt-2 flex-shrink-0">
         <button
           onClick={onNewSession}
-          className="flex items-center justify-center gap-1.5 w-full py-[6px] rounded-md border border-dashed border-border/20 text-[10.5px] text-muted-foreground/50 hover:text-foreground/70 hover:border-cherry-ring hover:bg-cherry-active-bg transition-all duration-150 group"
+          className="flex items-center gap-1.5 w-full px-2 py-[6px] rounded-md text-[11px] text-foreground/75 hover:text-foreground hover:bg-accent/30 transition-colors"
         >
-          <Plus size={11} className="group-hover:text-cherry-primary/70 transition-colors" />
-          {"新建会话"}
+          <Plus size={12} className="text-muted-foreground flex-shrink-0" />
+          <span>新建任务</span>
         </button>
       </div>
 
       {/* Search */}
-      <div className="px-2.5 py-1.5 flex-shrink-0">
-        <div className="flex items-center gap-1.5 px-2 py-[4px] rounded-md bg-accent/8 border border-border/8">
-          <Search size={10} className="text-muted-foreground/30 flex-shrink-0" />
+      <div className="px-2 pt-1.5 pb-1 flex-shrink-0">
+        <div className="flex items-center gap-1.5 px-2 py-[5px] rounded-md bg-accent/20 border border-border/20">
+          <Search size={10} className="text-muted-foreground/40 flex-shrink-0" />
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索会话..."
-            className="flex-1 bg-transparent text-[10.5px] text-foreground/70 placeholder:text-muted-foreground/25 outline-none"
+            placeholder="搜索任务..."
+            className="flex-1 bg-transparent text-[10.5px] text-foreground placeholder:text-muted-foreground/40 outline-none min-w-0"
           />
         </div>
       </div>
@@ -245,7 +236,7 @@ export function SessionSidebar({ sessions, activeSessionId, onSelectSession, onN
         {filteredPinned.length === 0 && filteredRecent.length === 0 && searchQuery && (
           <div className="flex flex-col items-center justify-center py-8">
             <Search size={16} className="text-muted-foreground/15 mb-2" />
-            <p className="text-[10px] text-muted-foreground/30">{"未找到会话"}</p>
+            <p className="text-[10px] text-muted-foreground/30">{"未找到任务"}</p>
           </div>
         )}
       </div>

@@ -269,12 +269,6 @@ export function Sidebar({
             </div>
           </div>
 
-          {/* Logo area */}
-          <div className="flex items-center h-14 px-4 gap-2.5 flex-shrink-0">
-            <CherryLogo size="md" />
-            <span className="text-sm text-sidebar-foreground truncate">Cherry Studio</span>
-          </div>
-
           {/* Search */}
           <div className="px-3 py-2 flex-shrink-0">
             <div onClick={() => { onSearchClick(); handleDismiss(); }} className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-sidebar-accent/50 text-muted-foreground text-xs cursor-pointer hover:bg-accent transition-colors">
@@ -355,16 +349,6 @@ export function Sidebar({
       style={{ width: actualWidth }}
       className="h-full bg-sidebar flex flex-col flex-shrink-0 relative group/sidebar z-20 select-none"
     >
-      {/* Logo area */}
-      <div className={`flex items-center flex-shrink-0 ${
-        layout === 'full' ? 'h-14 px-4 gap-2.5' : 'h-14 justify-center'
-      }`}>
-        <CherryLogo size={layout === 'full' ? 'md' : 'sm'} />
-        {layout === 'full' && (
-          <span className="text-sm text-sidebar-foreground truncate">Cherry Studio</span>
-        )}
-      </div>
-
       {/* Search */}
       {layout === 'full' ? (
         <div className="px-3 py-2 flex-shrink-0">
