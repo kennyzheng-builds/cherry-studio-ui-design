@@ -14,6 +14,7 @@ import {
   Search, Paperclip, Hammer, Link, Zap,
   SlidersHorizontal,
   MessageCircle, Image as ImageIcon,
+  PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { copyToClipboard } from '@/app/utils/clipboard';
@@ -1492,6 +1493,96 @@ function MessageBubble({ msg, onOpenPanel, onAvatarClick, onOpenArtifact, assist
 // Topic Breadcrumb Selector
 // ===========================
 
+// ===========================
+// Topic List Panel
+// ===========================
+// Persistent leftmost column inside the chat page (mirrors real Cherry Studio):
+// search + "new topic" button + scrollable list of all topics for the active
+// assistant. Collapsible via the PanelLeft toggle in the header.
+
+function TopicListPanel({
+  topics, activeTopic, onSelectTopic, onNewTopic,
+}: {
+  topics: AssistantTopic[];
+  activeTopic: AssistantTopic | undefined;
+  onSelectTopic: (id: string) => void;
+  onNewTopic: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const filtered = useMemo(() => {
+    if (!search.trim()) return topics;
+    const q = search.toLowerCase();
+    return topics.filter(t => t.title.toLowerCase().includes(q) || t.assistantName.toLowerCase().includes(q));
+  }, [topics, search]);
+
+  return (
+    <div className="h-full flex flex-col bg-sidebar/40 border-r border-border/30">
+      {/* Top: new topic */}
+      <div className="px-2 pt-2 flex-shrink-0">
+        <button
+          onClick={onNewTopic}
+          className="flex items-center gap-1.5 w-full px-2 py-[6px] rounded-md text-[11px] text-foreground/75 hover:text-foreground hover:bg-accent/30 transition-colors"
+        >
+          <Plus size={12} className="text-muted-foreground flex-shrink-0" />
+          <span>新建话题</span>
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="px-2 pt-1.5 pb-1 flex-shrink-0">
+        <div className="flex items-center gap-1.5 px-2 py-[5px] rounded-md bg-accent/20 border border-border/20">
+          <Search size={10} className="text-muted-foreground/40 flex-shrink-0" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="搜索话题..."
+            className="flex-1 bg-transparent text-[10.5px] text-foreground placeholder:text-muted-foreground/40 outline-none min-w-0"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="text-muted-foreground/30 hover:text-muted-foreground/60">
+              <X size={9} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="flex-1 overflow-y-auto px-1.5 pb-2 [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border/30 [&::-webkit-scrollbar-thumb]:rounded-full">
+        {filtered.length === 0 ? (
+          <div className="px-2 py-4 text-center text-[10px] text-muted-foreground/40">无匹配结果</div>
+        ) : (
+          filtered.map(t => {
+            const selected = activeTopic && t.id === activeTopic.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => onSelectTopic(t.id)}
+                className={`flex items-start gap-2 w-full px-2 py-[7px] rounded-md text-left transition-colors mb-px ${
+                  selected
+                    ? 'bg-accent/50 text-foreground'
+                    : 'text-foreground/75 hover:bg-accent/25 hover:text-foreground'
+                }`}
+              >
+                <MessageCircle
+                  size={11}
+                  className={`flex-shrink-0 mt-[1px] ${selected ? 'text-foreground/70' : 'text-muted-foreground/50'}`}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className={`text-[11px] truncate ${selected ? 'text-foreground' : ''}`}>{t.title}</div>
+                  <div className="text-[9.5px] text-muted-foreground/50 truncate mt-[1px]">
+                    {t.assistantName} · {t.timestamp}
+                  </div>
+                </div>
+                {t.pinned && <Bookmark size={9} className="text-muted-foreground/45 flex-shrink-0 mt-[2px]" />}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TopicBreadcrumb({ topics, activeTopic, onSelectTopic }: {
   topics: AssistantTopic[];
   activeTopic: AssistantTopic;
@@ -1707,6 +1798,9 @@ export function AssistantRunPage({ initialTopicId }: { initialTopicId?: string }
   const [topics, setTopics] = useState<AssistantTopic[]>(MOCK_TOPICS);
   const [activeTopicId, setActiveTopicId] = useState<string | null>(initialTopicId || 'new-topic-init');
   const [newTopicCounter, setNewTopicCounter] = useState(1);
+  // Collapsible left topic list (hidden in floating popouts since a popout
+  // is a single-conversation window).
+  const [showTopicList, setShowTopicList] = useState(true);
 
   // Ensure there's always an initial "新话题"
   useEffect(() => {
@@ -2109,6 +2203,21 @@ export function AssistantRunPage({ initialTopicId }: { initialTopicId?: string }
     <div className="flex flex-col h-full bg-background select-none relative">
       {/* ===== Header ===== */}
       <header className="flex items-center px-3 flex-shrink-0 h-[40px]">
+        {/* Topic list toggle — mirrors the sidebar show/hide in real Cherry Studio */}
+        {!isFloating && (
+          <Tooltip content={showTopicList ? '收起话题列表' : '展开话题列表'} side="bottom">
+            <button
+              onClick={() => setShowTopicList(v => !v)}
+              className={`p-1.5 rounded mr-1 transition-colors ${
+                showTopicList
+                  ? 'text-foreground/80 bg-accent/25'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/15'
+              }`}
+            >
+              {showTopicList ? <PanelLeftClose size={13} /> : <PanelLeftOpen size={13} />}
+            </button>
+          </Tooltip>
+        )}
         <MultiSelectPicker
           mode={selectMode}
           selectedAssistants={selectedAssistants}
@@ -2122,13 +2231,6 @@ export function AssistantRunPage({ initialTopicId }: { initialTopicId?: string }
           onToggleMultiModel={handleToggleMultiModel}
           onCreateAssistant={onNavigateToLibrary}
         />
-        {activeTopic && !isFloating && (
-          <TopicBreadcrumb
-            topics={topics}
-            activeTopic={activeTopic}
-            onSelectTopic={handleSelectTopic}
-          />
-        )}
         <div className="flex-1" />
         <div className="flex items-center gap-0.5">
           {(selectedAssistants.length > 1 || selectedModels.length > 1) && (
@@ -2177,6 +2279,28 @@ export function AssistantRunPage({ initialTopicId }: { initialTopicId?: string }
 
       {/* ===== Main Content ===== */}
       <div ref={artifactContainerRef} className="flex flex-1 min-h-0 relative">
+        {/* Leftmost: Topic list (persistent, like real Cherry Studio) */}
+        <AnimatePresence initial={false}>
+          {showTopicList && !isFloating && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 224, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+              className="flex-shrink-0 overflow-hidden"
+            >
+              <div style={{ width: 224 }} className="h-full">
+                <TopicListPanel
+                  topics={topics}
+                  activeTopic={activeTopic}
+                  onSelectTopic={handleSelectTopic}
+                  onNewTopic={handleNewTopic}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Left: Artifacts */}
         <AnimatePresence initial={false}>
           {showArtifacts && hasMessages && !artifactFullscreen && (

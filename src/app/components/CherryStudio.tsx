@@ -327,22 +327,16 @@ function CherryStudioInner() {
   return (
     <GlobalActionProvider value={globalActions}>
       <div className="flex items-center justify-center h-screen w-full bg-neutral-200 dark:bg-neutral-900 p-6">
-        <div id="cherry-app-root" className="flex flex-col w-full h-full max-w-[1200px] max-h-[800px] bg-sidebar text-foreground rounded-2xl border border-border overflow-hidden shadow-2xl relative">
-          <TabBar
-            tabs={tabs}
-            activeTabId={activeTabId}
-            onTabClick={setActiveTabId}
-            onTabClose={handleCloseTab}
-            onTabContext={(e, tabId) => {
-              e.preventDefault();
-              setContextMenu({ visible: true, x: e.clientX, y: e.clientY, tabId });
-            }}
-            onNewTab={openNewTabDialog}
-            startTabDrag={onStartTabDrag}
-          />
-
-          <div className="flex flex-1 min-h-0">
-            <div ref={sidebarContainerRef} className="flex-shrink-0 h-full">
+        <div id="cherry-app-root" className="flex flex-row w-full h-full max-w-[1200px] max-h-[800px] bg-sidebar text-foreground rounded-2xl border border-border overflow-hidden shadow-2xl relative">
+          {/* ===== Left column: traffic lights + sidebar ===== */}
+          <div ref={sidebarContainerRef} className="flex flex-col flex-shrink-0 h-full">
+            {/* Traffic lights — macOS window chrome, lives on the sidebar side */}
+            <div className="h-11 flex items-center gap-2 px-4 flex-shrink-0 select-none">
+              <div className="w-3 h-3 rounded-full bg-[#ff5f57] border border-[#e0443e]" />
+              <div className="w-3 h-3 rounded-full bg-[#febc2e] border border-[#d4a528]" />
+              <div className="w-3 h-3 rounded-full bg-[#28c840] border border-[#24a732]" />
+            </div>
+            <div className="flex-1 min-h-0">
               <Sidebar
                 width={sidebarWidth}
                 setWidth={setSidebarWidth}
@@ -361,8 +355,23 @@ function CherryStudioInner() {
                 onCloseDockedTab={handleCloseTab}
               />
             </div>
+          </div>
 
-            <div className={`flex-1 flex flex-col min-w-0 pr-2 pb-2 ${getLayout(sidebarWidth) === 'hidden' ? 'pl-2' : ''}`}>
+          {/* ===== Right column: tab bar + content ===== */}
+          <div className="flex-1 flex flex-col min-w-0">
+            <TabBar
+              tabs={tabs}
+              activeTabId={activeTabId}
+              onTabClick={setActiveTabId}
+              onTabClose={handleCloseTab}
+              onTabContext={(e, tabId) => {
+                e.preventDefault();
+                setContextMenu({ visible: true, x: e.clientX, y: e.clientY, tabId });
+              }}
+              onNewTab={openNewTabDialog}
+              startTabDrag={onStartTabDrag}
+            />
+            <div className={`flex-1 flex flex-col min-h-0 pr-2 pb-2 ${getLayout(sidebarWidth) === 'hidden' ? 'pl-2' : ''}`}>
               <div className="flex-1 bg-background rounded-xl flex flex-col min-h-0 relative">
                 <MainContent
                   tabs={tabs}

@@ -112,15 +112,9 @@ export function TabBar({
   }, [containerWidth, pinnedTabs, unpinnedTabs, activeTabId]);
 
   return (
-    <div className="h-11 bg-sidebar flex items-center select-none flex-shrink-0">
-      {/* Traffic lights */}
-      <div className="flex items-center gap-2 px-4 flex-shrink-0">
-        <div className="w-3 h-3 rounded-full bg-[#ff5f57] border border-[#e0443e]" />
-        <div className="w-3 h-3 rounded-full bg-[#febc2e] border border-[#d4a528]" />
-        <div className="w-3 h-3 rounded-full bg-[#28c840] border border-[#24a732]" />
-      </div>
-
-      {/* Tabs area */}
+    <div className="h-11 bg-sidebar flex items-center select-none flex-shrink-0 pl-2">
+      {/* Tabs area — traffic lights live in the sidebar column now so the tab
+          bar only spans the content area (right of the sidebar). */}
       <div
         ref={containerRef}
         className="flex-1 flex items-center gap-0.5 overflow-hidden min-w-0 px-1"
