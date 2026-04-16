@@ -1509,11 +1509,18 @@ function TopicListPanel({
   onNewTopic: () => void;
 }) {
   const [search, setSearch] = useState('');
+  // Hide empty "新话题" placeholders from the list — the "新建话题" button
+  // above already handles creating them, so duplicating them as a list item
+  // is just noise. Only show topics that have content.
+  const visible = useMemo(
+    () => topics.filter(t => !(t.title === '新话题' && t.messageCount === 0)),
+    [topics],
+  );
   const filtered = useMemo(() => {
-    if (!search.trim()) return topics;
+    if (!search.trim()) return visible;
     const q = search.toLowerCase();
-    return topics.filter(t => t.title.toLowerCase().includes(q) || t.assistantName.toLowerCase().includes(q));
-  }, [topics, search]);
+    return visible.filter(t => t.title.toLowerCase().includes(q) || t.assistantName.toLowerCase().includes(q));
+  }, [visible, search]);
 
   return (
     <div className="h-full flex flex-col bg-sidebar/40 border-r border-border/30">
@@ -1776,7 +1783,7 @@ function MultiSelectPicker({
 // Assistant Run Page
 // ===========================
 
-export function AssistantRunPage({ initialTopicId }: { initialTopicId?: string } = {}) {
+export function AssistantRunPage({ tabId, initialTopicId }: { tabId?: string; initialTopicId?: string } = {}) {
   const { editAssistantInLibrary: onEditAssistantInLibrary, navigateToKnowledge: onNavigateToKnowledge, navigateToLibrary: _navLib, changeTabTitle: onTabTitleChange, openSettings: onOpenSettings, requestOpenTopic } = useGlobalActions();
   // In a popout window we hide navigation UI (new topic, history, etc.) since
   // a popout is a single-conversation window — can't switch or open others.
@@ -1870,12 +1877,12 @@ export function AssistantRunPage({ initialTopicId }: { initialTopicId?: string }
     setNewTopicCounter(c => c + 1);
   }, [newTopicCounter]);
 
-  // Sync topic name to tab title
+  // Sync topic name to tab title. We deliberately target our own tabId so
+  // this update never clobbers another tab when kept-alive in background.
   useEffect(() => {
-    if (onTabTitleChange) {
-      onTabTitleChange(activeTopic ? activeTopic.title : '聊天');
-    }
-  }, [activeTopic, onTabTitleChange]);
+    if (!tabId) return;
+    onTabTitleChange(activeTopic ? activeTopic.title : '聊天', tabId);
+  }, [activeTopic, onTabTitleChange, tabId]);
 
   // Panels
   const [showArtifacts, setShowArtifacts] = useState(false);
@@ -2171,7 +2178,7 @@ export function AssistantRunPage({ initialTopicId }: { initialTopicId?: string }
       }
     }
     setInput(val);
-    const el = e.target; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+    const el = e.target; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 220) + 'px';
   };
 
   const handleOpenPanel = useCallback((panel: 'chatDetail' | 'rag' | 'search', msg: AssistantMessage) => {
@@ -2416,8 +2423,10 @@ export function AssistantRunPage({ initialTopicId }: { initialTopicId?: string }
                     ref={textareaRef} value={input} onChange={handleInput} onKeyDown={handleKeyDown}
                     placeholder="在这里输入消息，按 Enter 发送 - @ 选择助手/模型"
                     rows={1}
-                    className="w-full bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground/50 outline-none resize-none min-h-[36px] max-h-[140px] leading-[1.6] px-3.5 pt-[10px] pb-[36px]"
+                    className="w-full bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground/50 outline-none resize-none min-h-[36px] max-h-[220px] leading-[1.6] px-3.5 pt-[10px] pb-[44px]"
                   />
+                  {/* Soft fade so scrolled text doesn't visually clash with the action bar */}
+                  <div className="pointer-events-none absolute left-0 right-0 bottom-[40px] h-3 bg-gradient-to-b from-transparent to-background" />
                   {/* @ Mention Picker */}
                   {showAtMenu && (
                     <AtMentionPicker
@@ -2433,7 +2442,7 @@ export function AssistantRunPage({ initialTopicId }: { initialTopicId?: string }
                       onClose={() => setShowAtMenu(false)}
                     />
                   )}
-                  <div className="absolute bottom-[7px] left-2.5 right-2.5 flex items-center justify-between">
+                  <div className="absolute bottom-0 left-0 right-0 px-2.5 py-[7px] rounded-b-xl bg-background/95 backdrop-blur-sm flex items-center justify-between">
                     <div className="flex items-center gap-0.5">
                       <button ref={plusBtnRef}
                         onClick={() => { setShowPlusMenu(v => !v); setShowAtMenu(false); }}

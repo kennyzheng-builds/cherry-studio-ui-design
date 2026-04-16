@@ -82,13 +82,19 @@ export function Composer({
           disabled={disabled}
           className={`w-full bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground/60 outline-none resize-none leading-[1.6] ${
             isRounded
-              ? 'min-h-[44px] px-4 pt-3.5 pb-[38px] placeholder:text-muted-foreground/35'
-              : 'min-h-[36px] px-3.5 pt-[10px] pb-[36px]'
+              ? 'min-h-[44px] px-4 pt-3.5 pb-[46px] placeholder:text-muted-foreground/35'
+              : 'min-h-[36px] px-3.5 pt-[10px] pb-[44px]'
           }`}
           style={{ maxHeight: maxHeight + 'px' }}
         />
+        {/* Soft fade so scrolled text doesn't visually clash with the action bar */}
+        <div className={`pointer-events-none absolute left-0 right-0 h-3 bg-gradient-to-b from-transparent ${
+          isRounded ? 'bottom-[42px] to-card/80' : 'bottom-[40px] to-background'
+        } ${isRounded ? 'rounded-b-none' : ''}`} />
         <div className={`absolute flex items-center justify-between ${
-          isRounded ? 'bottom-[8px] left-3 right-3' : 'bottom-[7px] left-2.5 right-2.5'
+          isRounded
+            ? 'bottom-0 left-0 right-0 px-3 py-2 rounded-b-2xl bg-card/95 backdrop-blur-sm'
+            : 'bottom-0 left-0 right-0 px-2.5 py-[7px] rounded-b-xl bg-background/95 backdrop-blur-sm'
         }`}>
           <div className="flex items-center gap-0.5">
             {leftActions || (
