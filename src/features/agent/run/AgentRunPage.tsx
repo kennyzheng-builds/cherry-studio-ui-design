@@ -802,22 +802,12 @@ export function AgentRunPage({ onBack, tabId, initialSessionId }: { onBack?: () 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(initialSessionId ?? null);
   const [localMessages, setLocalMessages] = useState<Record<string, ChatMessage[]>>({});
 
-  // Multi-file tab state (replaces single `selectedFile`)
-  const [openedFiles, setOpenedFiles] = useState<string[]>(() => {
-    if (initialSessionId) {
-      const data = SESSION_DATA_MAP[initialSessionId];
-      const first = data ? Object.keys(data.fileContents)[0] : null;
-      return first ? [first] : [];
-    }
-    return ['src/App.tsx'];
-  });
-  const [activeFile, setActiveFile] = useState<string | null>(() => {
-    if (initialSessionId) {
-      const data = SESSION_DATA_MAP[initialSessionId];
-      return data ? (Object.keys(data.fileContents)[0] || null) : null;
-    }
-    return 'src/App.tsx';
-  });
+  // Multi-file tab state. Empty by default — files only open when the user
+  // explicitly clicks a file-mention chip in agent messages, the file index
+  // popover, or the top-right "open work panel" button. The right pane is
+  // never auto-populated when entering a session.
+  const [openedFiles, setOpenedFiles] = useState<string[]>([]);
+  const [activeFile, setActiveFile] = useState<string | null>(null);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [mdlSearch, setMdlSearch] = useState('');
@@ -833,7 +823,11 @@ export function AgentRunPage({ onBack, tabId, initialSessionId }: { onBack?: () 
       return matchProvider && matchSearch && matchCap;
     });
   }, [activeProvider, mdlSearch, mdlCapFilter]);
-  const [showPreview, setShowPreview] = useState(!!initialSessionId);
+  // Right work pane is closed by default. It only opens when the user clicks
+  // an artifact (file mention chip in chat, file index popover, etc.) or the
+  // explicit "open work panel" button. Conversation is the primary surface;
+  // the preview is a lazy on-demand companion (Cursor / Canvas pattern).
+  const [showPreview, setShowPreview] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   // Collapsible left session list (mirror real Cherry Studio). Hidden in
   // floating popouts since a popout is a single-session window.
@@ -906,18 +900,13 @@ export function AgentRunPage({ onBack, tabId, initialSessionId }: { onBack?: () 
     const session = sessions.find(s => s.id === id);
     if (requestOpenSession(id, session?.title)) return;
 
+    // Switching session resets the work pane state — the new session starts
+    // with no open files and the preview hidden. Files are opened on demand
+    // when the user clicks a file mention in the conversation.
     setActiveSessionId(id);
-    const data = SESSION_DATA_MAP[id];
-    if (data) {
-      const firstKey = Object.keys(data.fileContents)[0] || null;
-      setOpenedFiles(firstKey ? [firstKey] : []);
-      setActiveFile(firstKey);
-      setShowPreview(true);
-    } else {
-      setOpenedFiles([]);
-      setActiveFile(null);
-      setShowPreview(true);
-    }
+    setOpenedFiles([]);
+    setActiveFile(null);
+    setShowPreview(false);
   }, [sessions, requestOpenSession]);
 
   const handleDeleteSession = useCallback((id: string) => {

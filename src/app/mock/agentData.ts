@@ -550,12 +550,12 @@ const SESSION_2_MESSAGES: ChatMessage[] = [
   { id: 'r-m12', role: 'agent', toolCall: { name: 'write reports/methodology.md', status: 'done', duration: '1.8s' }, timestamp: '10:24' },
   { id: 'r-m13', role: 'agent', toolCall: { name: 'write data/benchmark-results.json', status: 'done', duration: '0.5s' }, timestamp: '10:24' },
   { id: 'r-m14', role: 'agent', toolCall: { name: 'write data/pricing-matrix.json', status: 'done', duration: '0.4s' }, timestamp: '10:24' },
-  { id: 'r-m15', role: 'agent', content: '调研报告已完成！核心发现：\n\n• LangChain 生态最成熟，综合评分 8.2/10\n• LlamaIndex 在 RAG 场景性能最优（0.9s 延迟, 91% 准确率）\n• AutoGen 最适合多 Agent 协作场景\n• 推荐方案：LangChain + LlamaIndex 组合\n\n报告文件已保存在 reports/ 目录下。', timestamp: '11:42' },
+  { id: 'r-m15', role: 'agent', content: '调研报告已完成！主报告 reports/ai-frameworks-comparison.md ，执行摘要 reports/executive-summary.md ，方法论 reports/methodology.md 。\n\n核心发现：\n\n• LangChain 生态最成熟，综合评分 8.2/10\n• LlamaIndex 在 RAG 场景性能最优（0.9s 延迟, 91% 准确率）\n• AutoGen 最适合多 Agent 协作场景\n• 推荐方案：LangChain + LlamaIndex 组合', timestamp: '11:42' },
   { id: 'r-m16', role: 'user', content: '能不能再加一个各框架的成本对比？包括云服务定价。', timestamp: '11:43' },
   { id: 'r-m17', role: 'agent', thinking: '用户想要成本对比信息。我已经收集了部分定价数据在 pricing-matrix.json 中，需要整理成更直观的格式并补充到报告中。', content: '当然！正在补充成本分析部分...', timestamp: '11:43' },
   { id: 'r-m18', role: 'agent', toolCall: { name: 'search web: LangSmith LlamaCloud Azure AI pricing 2025', status: 'done', duration: '3.2s' }, timestamp: '11:44' },
   { id: 'r-m19', role: 'agent', toolCall: { name: 'update reports/ai-frameworks-comparison.md', status: 'done', duration: '1.9s' }, timestamp: '11:45' },
-  { id: 'r-m20', role: 'agent', content: '已添加成本对比章节。所有框架均为 MIT 开源协议可免费商用，云服务定价方面 LangSmith $39/seat/mo，LlamaCloud 按用量计费 $0.002/page。', timestamp: '11:45' },
+  { id: 'r-m20', role: 'agent', content: '已添加成本对比章节，详见 reports/ai-frameworks-comparison.md 。所有框架均为 MIT 开源协议可免费商用，云服务定价方面 LangSmith $39/seat/mo，LlamaCloud 按用量计费 $0.002/page。', timestamp: '11:45' },
   { id: 'r-m21', role: 'agent', generativeUI: { type: 'buttons', prompt: '还需要什么补充？', options: [{ label: '生成 PPT 演示稿' }, { label: '添加技术路线图' }, { label: '导出 PDF 报告' }], resolved: false }, timestamp: '11:45' },
 ];
 
