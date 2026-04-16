@@ -47,8 +47,8 @@ export const TabPageRenderer = React.memo(function TabPageRenderer({ tab, isActi
             setAppOrder={actions.setAppOrder}
           />
         )
-        : menuItemId === 'chat' ? <AssistantRunPage initialTopicId={tab.topicId} />
-        : menuItemId === 'agent' ? <AgentRunPage initialSessionId={tab.sessionId} />
+        : menuItemId === 'chat' ? <AssistantRunPage tabId={tab.id} initialTopicId={tab.topicId} />
+        : menuItemId === 'agent' ? <AgentRunPage tabId={tab.id} initialSessionId={tab.sessionId} />
         : menuItemId === 'models' ? <ModelServicePage />
         : menuItemId === 'painting' ? <ImagePage />
         : menuItemId === 'translate' ? <TranslatePage />

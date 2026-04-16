@@ -28,8 +28,9 @@ export interface GlobalActionFunctions {
   navigateToLibrary: (createType?: 'agent' | 'assistant') => void;
   /** Return from Library back to the page that initiated the navigation */
   libraryReturn: () => void;
-  /** Change the title of the currently-active tab */
-  changeTabTitle: (title: string) => void;
+  /** Change the title of a specific tab. Pass the page's own tab id so the
+   *  callback stays referentially stable across active-tab changes. */
+  changeTabTitle: (title: string, tabId: string) => void;
   /** Open the global Settings overlay */
   openSettings: () => void;
   /** Replace a tab (identified by id) with a target menu-item page — used by the new-tab page */

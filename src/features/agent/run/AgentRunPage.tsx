@@ -795,7 +795,7 @@ function AgentInfoPanel({ agent, onClose, onEdit }: {
 // Agent Run Page
 // ===========================
 
-export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void; initialSessionId?: string } = {}) {
+export function AgentRunPage({ onBack, tabId, initialSessionId }: { onBack?: () => void; tabId?: string; initialSessionId?: string } = {}) {
   const { navigateToLibrary: _navLib, changeTabTitle: onTabTitleChange, openSettings: onOpenSettings, requestOpenSession } = useGlobalActions();
   const onNavigateToLibrary = () => _navLib('agent');
   const [sessions, setSessions] = useState<AgentSession[]>(MOCK_SESSIONS);
@@ -852,12 +852,12 @@ export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void
   const hasMessages = messages.length > 0;
   const activeSession = sessions.find(s => s.id === activeSessionId);
 
-  // Sync session name to tab title
+  // Sync session name to tab title. We target our own tabId so this update
+  // never clobbers another tab when kept-alive in background.
   useEffect(() => {
-    if (onTabTitleChange) {
-      onTabTitleChange(activeSession ? activeSession.title : '\u5de5\u4f5c');
-    }
-  }, [activeSession, onTabTitleChange]);
+    if (!tabId) return;
+    onTabTitleChange(activeSession ? activeSession.title : '\u5de5\u4f5c', tabId);
+  }, [activeSession, onTabTitleChange, tabId]);
 
   const fileContent = activeFile ? (sessionData.fileContents[activeFile] || null) : null;
 

@@ -15,6 +15,8 @@ import type {
 // Sidebar Menu Items (static UI config)
 // ===========================
 
+// Full module registry. Used by createTabForMenuItem, routing, the new-tab
+// dialog — any surface that needs to resolve a menuItemId to a tab.
 export const menuItems: MenuItem[] = [
   { id: 'chat', label: '聊天', icon: MessageCircle },
   { id: 'agent', label: '工作', icon: MousePointerClick },
@@ -30,8 +32,11 @@ export const menuItems: MenuItem[] = [
   { id: 'extensions', label: '扩展', icon: Blocks },
 ];
 
-// Multi-instance types: clicking sidebar always creates a new tab
-export const MULTI_INSTANCE_ITEMS = ['chat', 'agent'];
+// Which modules show up in the slim left sidebar (the other 7 live behind
+// the new-tab dialog "+". This is purely a sidebar-display filter and does
+// NOT remove those modules from the app — you can still create/switch to
+// their tabs via Cmd+T or clicking the "+" button.
+export const SIDEBAR_MENU_IDS = ['chat', 'agent', 'painting', 'translate', 'miniapp'];
 
 // Sidebar layout breakpoints
 export const BP_ICON = 50;

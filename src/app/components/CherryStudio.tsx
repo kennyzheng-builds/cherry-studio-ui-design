@@ -7,8 +7,8 @@ import { NewTabDialog } from './ui/NewTabDialog';
 import { DragGhost } from './ui/DragGhost';
 import { MainContent } from './MainContent';
 import {
-  menuItems, getLayout,
-  dialogAppIcons, MOCK_RESOURCES, MULTI_INSTANCE_ITEMS,
+  menuItems, SIDEBAR_MENU_IDS, getLayout, BP_ICON, BP_VERTICAL_CARD,
+  dialogAppIcons, MOCK_RESOURCES,
 } from '@/app/config/constants';
 import type { Tab, MenuItem, ContextMenuState, DetachedWindow } from '@/app/types';
 import { SettingsPage } from './settings/SettingsPage';
@@ -45,7 +45,7 @@ function CherryStudioInner() {
     handleCloseTab, createTabForMenuItem,
     replaceTabWithMenuItem,
     handleDialogCreateTab,
-    openTopicInNewChatTab, openSessionInNewAgentTab,
+    handleSidebarItemClick: sidebarClickFromHook,
     handleOpenMiniApp, handlePinTab, handleTabTitleChange,
     handleDockToSidebar, handleUndockFromSidebar, dockedTabs,
   } = useTabs();
@@ -197,50 +197,28 @@ function CherryStudioInner() {
   // ===========================
   // Sidebar item filtering
   // ===========================
-  const managedIds = new Set(appOrder);
-  const orderedVisible = appOrder
-    .filter(id => !hiddenApps.has(id))
-    .map(id => menuItems.find(m => m.id === id))
-    .filter((m): m is MenuItem => !!m);
-  const unmanagedItems = menuItems.filter(m => !managedIds.has(m.id));
-  const visibleMenuItems = [...orderedVisible, ...unmanagedItems];
+  // The sidebar shows a slim curated list (SIDEBAR_MENU_IDS) so it stays
+  // minimalist — everything else is reachable from the "+" new-tab dialog.
+  const visibleMenuItems = useMemo(
+    () => SIDEBAR_MENU_IDS
+      .map(id => menuItems.find(m => m.id === id))
+      .filter((m): m is MenuItem => !!m)
+      .filter(m => !hiddenApps.has(m.id)),
+    [hiddenApps],
+  );
 
   // ===========================
-  // Sidebar & dialog handlers
+  // Sidebar handler
   // ===========================
-  // Pin-protection model:
-  // - Active tab pinned/home/miniapp → focus existing single-instance tab, else create new
-  // - Active tab unpinned & has menuItemId → replace in-place (kept tab id & position)
-  // - Same menuItemId → no-op
+  // Tab management itself lives in useTabs (Model A: "navigate to module").
+  // This wrapper only adds CherryStudio-level UI side-effects (sidebar
+  // highlight + dismissing the floating sidebar overlay).
   const handleSidebarItemClick = useCallback((menuItemId: string) => {
-    setActiveItem(menuItemId);
-    setHoverVisible(false);
-
-    const activeTab = tabs.find(t => t.id === activeTabId);
-
-    // Already on this menu item — no-op
-    if (activeTab?.menuItemId === menuItemId) return;
-
-    const isReplaceable = !!activeTab
-      && !activeTab.pinned
-      && !activeTab.miniAppId
-      && !!activeTab.menuItemId;
-
-    if (isReplaceable) {
-      replaceTabWithMenuItem(activeTab!.id, menuItemId);
-      return;
-    }
-
-    // Active tab is protected (pinned / home / miniapp) — focus existing or create new
-    if (!MULTI_INSTANCE_ITEMS.includes(menuItemId)) {
-      const existing = tabs.find(t => t.menuItemId === menuItemId);
-      if (existing) {
-        setActiveTabId(existing.id);
-        return;
-      }
-    }
-    createTabForMenuItem(menuItemId);
-  }, [tabs, activeTabId, createTabForMenuItem, replaceTabWithMenuItem, setActiveTabId]);
+    sidebarClickFromHook(menuItemId, () => {
+      setActiveItem(menuItemId);
+      setHoverVisible(false);
+    });
+  }, [sidebarClickFromHook]);
 
   // Cmd/Ctrl+T: open the new-tab dialog (floating)
   useEffect(() => {
@@ -269,28 +247,13 @@ function CherryStudioInner() {
     startSidebarDrag(e, tabId, { onUndockFromSidebar: handleUndockFromSidebar });
   }, [startSidebarDrag, handleUndockFromSidebar]);
 
-  // Pin-aware topic/session openers — the pages call these first; if we
-  // returned true, the page should skip its own in-place switch because we
-  // opened a new tab.
-  const requestOpenTopic = useCallback((topicId: string, title?: string) => {
-    const activeTab = tabs.find(t => t.id === activeTabId);
-    const isProtected = !!activeTab && (activeTab.pinned || !!activeTab.miniAppId);
-    if (isProtected) {
-      openTopicInNewChatTab(topicId, title);
-      return true;
-    }
-    return false;
-  }, [tabs, activeTabId, openTopicInNewChatTab]);
-
-  const requestOpenSession = useCallback((sessionId: string, title?: string) => {
-    const activeTab = tabs.find(t => t.id === activeTabId);
-    const isProtected = !!activeTab && (activeTab.pinned || !!activeTab.miniAppId);
-    if (isProtected) {
-      openSessionInNewAgentTab(sessionId, title);
-      return true;
-    }
-    return false;
-  }, [tabs, activeTabId, openSessionInNewAgentTab]);
+  // Pin no longer protects against session/topic switches. A tab is a
+  // persistent container for its module — switching the topic/session inside
+  // it is just internal state mutation, not a new-tab event. We keep the
+  // boolean return for API compatibility with consuming pages: returning
+  // false means "you handle it (in-place)".
+  const requestOpenTopic = useCallback((_topicId: string, _title?: string) => false, []);
+  const requestOpenSession = useCallback((_sessionId: string, _title?: string) => false, []);
 
   // ===========================
   // GlobalActionContext value
@@ -328,10 +291,23 @@ function CherryStudioInner() {
     <GlobalActionProvider value={globalActions}>
       <div className="flex items-center justify-center h-screen w-full bg-neutral-200 dark:bg-neutral-900 p-6">
         <div id="cherry-app-root" className="flex flex-row w-full h-full max-w-[1200px] max-h-[800px] bg-sidebar text-foreground rounded-2xl border border-border overflow-hidden shadow-2xl relative">
-          {/* ===== Left column: traffic lights + sidebar ===== */}
-          <div ref={sidebarContainerRef} className="flex flex-col flex-shrink-0 h-full">
+          {/* ===== Left column: traffic lights + sidebar =====
+              Pin the column width to the sidebar's actual rendered width so
+              the traffic-lights row (fixed size) can't push the column wider
+              in icon / vertical-card modes. */}
+          <div
+            ref={sidebarContainerRef}
+            className="flex flex-col flex-shrink-0 h-full overflow-hidden"
+            style={{
+              width: getLayout(sidebarWidth) === 'icon'
+                ? BP_ICON
+                : getLayout(sidebarWidth) === 'vertical-card'
+                  ? BP_VERTICAL_CARD
+                  : sidebarWidth,
+            }}
+          >
             {/* Traffic lights — macOS window chrome, lives on the sidebar side */}
-            <div className="h-11 flex items-center gap-2 px-4 flex-shrink-0 select-none">
+            <div className="h-11 flex items-center gap-[5px] px-3 flex-shrink-0 select-none">
               <div className="w-3 h-3 rounded-full bg-[#ff5f57] border border-[#e0443e]" />
               <div className="w-3 h-3 rounded-full bg-[#febc2e] border border-[#d4a528]" />
               <div className="w-3 h-3 rounded-full bg-[#28c840] border border-[#24a732]" />

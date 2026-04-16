@@ -5,7 +5,7 @@ import {
   Puzzle, MousePointerClick, Sparkles,
 } from 'lucide-react';
 import type { Tab, MenuItem } from '@/app/types';
-import { menuItems, MULTI_INSTANCE_ITEMS } from '@/app/config/constants';
+import { menuItems } from '@/app/config/constants';
 
 export const NEW_TAB_MENU_ID = 'newtab';
 
@@ -51,15 +51,18 @@ function deserializeTabs(json: string): Tab[] | null {
   }
 }
 
+// Seed lastActivatedAt sequentially so left-most tabs are "older" than
+// right-most ones; the user's first interaction will further refine the order.
+const DEFAULT_BASELINE = 1_000_000;
 const DEFAULT_TABS: Tab[] = [
-  { id: 'p1', title: '聊天', icon: MessageCircle, closeable: true, pinned: true, menuItemId: 'chat' },
-  { id: 'p2', title: '聊天', icon: MessageCircle, closeable: true, pinned: true, menuItemId: 'chat' },
-  { id: 'p3', title: '聊天', icon: MessageCircle, closeable: true, pinned: true, menuItemId: 'chat' },
-  { id: 'p4', title: '聊天', icon: MessageCircle, closeable: true, pinned: true, menuItemId: 'chat' },
-  { id: 't1', title: '聊天话题', icon: MessageCircle, closeable: true, menuItemId: 'chat' },
-  { id: 't2', title: '创作', icon: Palette, closeable: true, menuItemId: 'painting' },
-  { id: 't3', title: '工作', icon: MousePointerClick, closeable: true, menuItemId: 'agent' },
-  { id: 't4', title: '翻译', icon: Languages, closeable: true, menuItemId: 'translate' },
+  { id: 'p1', title: '聊天', icon: MessageCircle, closeable: true, pinned: true, menuItemId: 'chat', lastActivatedAt: DEFAULT_BASELINE + 1 },
+  { id: 'p2', title: '聊天', icon: MessageCircle, closeable: true, pinned: true, menuItemId: 'chat', lastActivatedAt: DEFAULT_BASELINE + 2 },
+  { id: 'p3', title: '聊天', icon: MessageCircle, closeable: true, pinned: true, menuItemId: 'chat', lastActivatedAt: DEFAULT_BASELINE + 3 },
+  { id: 'p4', title: '聊天', icon: MessageCircle, closeable: true, pinned: true, menuItemId: 'chat', lastActivatedAt: DEFAULT_BASELINE + 4 },
+  { id: 't1', title: '聊天话题', icon: MessageCircle, closeable: true, menuItemId: 'chat', lastActivatedAt: DEFAULT_BASELINE + 5 },
+  { id: 't2', title: '创作', icon: Palette, closeable: true, menuItemId: 'painting', lastActivatedAt: DEFAULT_BASELINE + 6 },
+  { id: 't3', title: '工作', icon: MousePointerClick, closeable: true, menuItemId: 'agent', lastActivatedAt: DEFAULT_BASELINE + 7 },
+  { id: 't4', title: '翻译', icon: Languages, closeable: true, menuItemId: 'translate', lastActivatedAt: DEFAULT_BASELINE + 8 },
 ];
 
 function loadTabs(): Tab[] {
@@ -102,13 +105,11 @@ export interface UseTabsReturn {
   createTabForMenuItem: (menuItemId: string) => void;
   createNewTab: () => void;
   replaceTabWithMenuItem: (tabId: string, menuItemId: string) => void;
-  openTopicInNewChatTab: (topicId: string, title?: string) => void;
-  openSessionInNewAgentTab: (sessionId: string, title?: string) => void;
   handleSidebarItemClick: (menuItemId: string, onAfter?: () => void) => void;
   handleDialogCreateTab: (menuItemId: string, onAfter?: () => void) => void;
   handleOpenMiniApp: (app: { id: string; name: string; color: string; initial: string; url: string; logoUrl?: string }) => void;
   handlePinTab: (tabId: string) => void;
-  handleTabTitleChange: (title: string) => void;
+  handleTabTitleChange: (title: string, tabId: string) => void;
   handleDockToSidebar: (tabId: string) => void;
   handleUndockFromSidebar: (tabId: string) => void;
   dockedTabs: Tab[];
@@ -121,6 +122,25 @@ export function useTabs(): UseTabsReturn {
   // Persist tabs & activeTabId to localStorage
   useEffect(() => { saveTabs(tabs); }, [tabs]);
   useEffect(() => { saveActiveTabId(activeTabId); }, [activeTabId]);
+
+  // Bump lastActivatedAt whenever the active tab changes — this is the source
+  // of truth for sidebar "jump to most recent" and the visible/overflow split.
+  // Done via effect so every setActiveTabId path (internal & external) is
+  // captured without each caller having to remember to update the timestamp.
+  useEffect(() => {
+    if (!activeTabId) return;
+    setTabs(prev => {
+      const idx = prev.findIndex(t => t.id === activeTabId);
+      if (idx === -1) return prev;
+      // Avoid useless re-renders when value is already current (e.g. just
+      // created with Date.now()).
+      const now = Date.now();
+      if ((prev[idx].lastActivatedAt ?? 0) === now) return prev;
+      const next = [...prev];
+      next[idx] = { ...next[idx], lastActivatedAt: now };
+      return next;
+    });
+  }, [activeTabId]);
 
   const handleCloseTab = useCallback((id: string) => {
     setTabs(prev => {
@@ -136,132 +156,99 @@ export function useTabs(): UseTabsReturn {
   const createTabForMenuItem = useCallback((menuItemId: string) => {
     const menuItem = menuItems.find(m => m.id === menuItemId);
     if (!menuItem) return;
-    const newId = `t${Date.now()}`;
+    const now = Date.now();
+    const newId = `t${now}`;
     const newTab: Tab = {
       id: newId,
       title: menuItem.label,
       icon: menuItem.icon,
       closeable: true,
       menuItemId,
+      lastActivatedAt: now,
     };
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(newId);
   }, []);
 
   const createNewTab = useCallback(() => {
-    const newId = `newtab-${Date.now()}`;
+    const now = Date.now();
+    const newId = `newtab-${now}`;
     const newTab: Tab = {
       id: newId,
       title: '新建标签页',
       icon: Sparkles,
       closeable: true,
       menuItemId: NEW_TAB_MENU_ID,
+      lastActivatedAt: now,
     };
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(newId);
   }, []);
 
-  // Open a specific chat topic in a new (unpinned) chat tab.
-  // Used when the active tab is pinned/home/miniapp and the user selects a topic,
-  // so the pinned tab isn't replaced.
-  const openTopicInNewChatTab = useCallback((topicId: string, title?: string) => {
-    const chatMenu = menuItems.find(m => m.id === 'chat');
-    const newId = `t${Date.now()}`;
-    const newTab: Tab = {
-      id: newId,
-      title: title || chatMenu?.label || '聊天',
-      icon: chatMenu?.icon || MessageCircle,
-      closeable: true,
-      menuItemId: 'chat',
-      topicId,
-    };
-    setTabs(prev => [...prev, newTab]);
-    setActiveTabId(newId);
-  }, []);
-
-  // Open a specific agent session in a new (unpinned) agent tab.
-  const openSessionInNewAgentTab = useCallback((sessionId: string, title?: string) => {
-    const agentMenu = menuItems.find(m => m.id === 'agent');
-    const newId = `t${Date.now()}`;
-    const newTab: Tab = {
-      id: newId,
-      title: title || agentMenu?.label || '工作',
-      icon: agentMenu?.icon || MousePointerClick,
-      closeable: true,
-      menuItemId: 'agent',
-      sessionId,
-    };
-    setTabs(prev => [...prev, newTab]);
-    setActiveTabId(newId);
-  }, []);
-
-  // Browser-like: selecting an item from the new-tab page replaces the current tab
-  // (instead of stacking another tab on top).
+  // Browser-like: selecting an item from the new-tab placeholder replaces the
+  // current tab in-place (instead of stacking another). The current tab here
+  // is by definition a blank placeholder (no menuItemId or NEW_TAB_MENU_ID),
+  // so there's nothing to "lose" by mutating it.
   const replaceTabWithMenuItem = useCallback((tabId: string, menuItemId: string) => {
     const menuItem = menuItems.find(m => m.id === menuItemId);
     if (!menuItem) return;
-
-    // Single-instance menu items: if another tab already owns it, jump there
-    // and close the new-tab placeholder.
-    if (!MULTI_INSTANCE_ITEMS.includes(menuItemId)) {
-      const existing = tabs.find(t => t.menuItemId === menuItemId && t.id !== tabId);
-      if (existing) {
-        setTabs(prev => prev.filter(t => t.id !== tabId));
-        setActiveTabId(existing.id);
-        return;
-      }
-    }
-
-    // Otherwise mutate the current tab in-place (keeps tab position & id)
     setTabs(prev => prev.map(t => t.id === tabId
-      ? { ...t, title: menuItem.label, icon: menuItem.icon, menuItemId }
+      ? { ...t, title: menuItem.label, icon: menuItem.icon, menuItemId, lastActivatedAt: Date.now() }
       : t
     ));
     setActiveTabId(tabId);
-  }, [tabs]);
+  }, []);
 
+  // Sidebar click — Model A: "module navigator", never destroys a tab.
+  // (0) active tab is a blank placeholder      → replace in-place
+  // (1) active tab is already module M         → no-op
+  // (2) otherwise → find non-detached tabs of M (pinned counts);
+  //      ≥1 → jump to lastActivatedAt-max one
+  //       0 → create a new M tab (with new session)
   const handleSidebarItemClick = useCallback((menuItemId: string, onAfter?: () => void) => {
-    if (MULTI_INSTANCE_ITEMS.includes(menuItemId)) {
-      // If current active tab is the same type and still has default title (new/unused), just stay
-      const menuItem = menuItems.find(m => m.id === menuItemId);
-      const activeTab = tabs.find(t => t.id === activeTabId);
-      if (activeTab && activeTab.menuItemId === menuItemId && menuItem && activeTab.title === menuItem.label) {
-        // Already on a "new" tab of the same type, don't create another
-        onAfter?.();
-        return;
-      }
-      // Also check if there's any tab of this type that still has the default title
-      const existingNew = tabs.find(t => t.menuItemId === menuItemId && menuItem && t.title === menuItem.label);
-      if (existingNew) {
-        setActiveTabId(existingNew.id);
-        onAfter?.();
-        return;
-      }
-      createTabForMenuItem(menuItemId);
-    } else {
-      const existing = tabs.find(t => t.menuItemId === menuItemId);
-      if (existing) {
-        setActiveTabId(existing.id);
-      } else {
-        createTabForMenuItem(menuItemId);
-      }
-    }
-    onAfter?.();
-  }, [tabs, createTabForMenuItem, activeTabId]);
+    const activeTab = tabs.find(t => t.id === activeTabId);
 
-  const handleDialogCreateTab = useCallback((menuItemId: string, onAfter?: () => void) => {
-    if (MULTI_INSTANCE_ITEMS.includes(menuItemId)) {
-      createTabForMenuItem(menuItemId);
-    } else {
-      const existing = tabs.find(t => t.menuItemId === menuItemId);
-      if (existing) {
-        setActiveTabId(existing.id);
-      } else {
-        createTabForMenuItem(menuItemId);
-      }
+    // (0) blank placeholder → in-place upgrade
+    const isBlankPlaceholder = activeTab
+      && !activeTab.miniAppId
+      && (!activeTab.menuItemId || activeTab.menuItemId === NEW_TAB_MENU_ID);
+    if (isBlankPlaceholder && activeTab) {
+      replaceTabWithMenuItem(activeTab.id, menuItemId);
+      onAfter?.();
+      return;
     }
+
+    // (1) already on module M → no-op
+    if (activeTab?.menuItemId === menuItemId && !activeTab.miniAppId) {
+      onAfter?.();
+      return;
+    }
+
+    // (2) find existing tabs of this module (detached doesn't count — those
+    // are mentally "out of the tab bar")
+    const candidates = tabs.filter(t =>
+      t.menuItemId === menuItemId && !t.detached && !t.miniAppId
+    );
+    if (candidates.length > 0) {
+      const mostRecent = candidates.reduce((acc, t) =>
+        (t.lastActivatedAt ?? 0) > (acc.lastActivatedAt ?? 0) ? t : acc
+      );
+      setActiveTabId(mostRecent.id);
+      onAfter?.();
+      return;
+    }
+
+    createTabForMenuItem(menuItemId);
     onAfter?.();
-  }, [tabs, createTabForMenuItem]);
+  }, [tabs, activeTabId, createTabForMenuItem, replaceTabWithMenuItem]);
+
+  // "+" / new-tab dialog → always creates a fresh tab. This is the explicit
+  // "new" gesture, so it never reuses existing tabs (in contrast to the
+  // sidebar, which is the "navigate to module" gesture).
+  const handleDialogCreateTab = useCallback((menuItemId: string, onAfter?: () => void) => {
+    createTabForMenuItem(menuItemId);
+    onAfter?.();
+  }, [createTabForMenuItem]);
 
   const handleOpenMiniApp = useCallback((app: { id: string; name: string; color: string; initial: string; url: string; logoUrl?: string }) => {
     const existing = tabs.find(t => t.miniAppId === app.id);
@@ -298,9 +285,13 @@ export function useTabs(): UseTabsReturn {
     });
   }, []);
 
-  const handleTabTitleChange = useCallback((title: string) => {
-    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, title } : t));
-  }, [activeTabId]);
+  // Pages must pass their own tabId so this callback stays stable across
+  // active-tab changes. Otherwise callers' useEffects (which include the
+  // callback ref in deps) re-fire across all kept-alive pages, causing the
+  // mounted-but-inactive page to clobber the now-active tab's title.
+  const handleTabTitleChange = useCallback((title: string, tabId: string) => {
+    setTabs(prev => prev.map(t => t.id === tabId ? { ...t, title } : t));
+  }, []);
 
   const handleDockToSidebar = useCallback((tabId: string) => {
     setTabs(prev => prev.map(t => t.id === tabId ? { ...t, sidebarDocked: true, pinned: false } : t));
@@ -321,8 +312,6 @@ export function useTabs(): UseTabsReturn {
     createTabForMenuItem,
     createNewTab,
     replaceTabWithMenuItem,
-    openTopicInNewChatTab,
-    openSessionInNewAgentTab,
     handleSidebarItemClick,
     handleDialogCreateTab,
     handleOpenMiniApp,

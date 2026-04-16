@@ -58,6 +58,11 @@ export interface Tab {
   // the id is recorded here so the mounted page can initialise from it.
   topicId?: string;
   sessionId?: string;
+  // Most-recent-use timestamp. Bumped each time the tab becomes active.
+  // Used by the sidebar "jump to most recent" rule and by the tab strip's
+  // visible/overflow split (least-recently-used non-active tab gets pushed
+  // to overflow when the strip is full).
+  lastActivatedAt?: number;
 }
 
 export type SidebarLayout = 'hidden' | 'icon' | 'vertical-card' | 'full';

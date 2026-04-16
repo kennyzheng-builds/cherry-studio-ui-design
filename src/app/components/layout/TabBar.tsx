@@ -2,6 +2,7 @@ import React, { useState, useRef, useLayoutEffect, useMemo } from 'react';
 import {
   Plus, X, ChevronDown,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Tooltip } from '@/app/components/Tooltip';
 import { TabOverflowMenu } from '@/app/components/ui/TabOverflowMenu';
 import type { Tab } from '@/app/types';
@@ -16,13 +17,17 @@ interface TabBarProps {
   startTabDrag: (e: React.MouseEvent, tabId: string) => void;
 }
 
-// === Layout budget constants (tuned for h-11 tab bar) ===
-const PINNED_WIDTH = 96;       // avg pinned pill width (icon + ~3 chars)
-const UNPINNED_WIDTH = 140;    // avg unpinned tab width (icon + label + × + gap)
+// === Layout constants ===
+// Minimum width that still leaves ~4-5 chars of title visible. Below this,
+// rather than compressing further (Chrome-style), we route the least-recently-
+// used tab into the overflow menu so visible titles stay readable.
+const MIN_UNPINNED_WIDTH = 120;
+const MAX_UNPINNED_WIDTH = 180;
+const PINNED_WIDTH = 96;
+const PINNED_CONTAINER_PADDING = 8;
 const SEPARATOR_WIDTH = 10;
 const PLUS_BUTTON_WIDTH = 32;
-const OVERFLOW_BUTTON_WIDTH = 44;
-const PINNED_CONTAINER_PADDING = 8;
+const OVERFLOW_BUTTON_WIDTH = 56;
 
 export function TabBar({
   tabs,
@@ -46,7 +51,7 @@ export function TabBar({
     [tabs],
   );
 
-  // Measure available width for responsive budgeting
+  // Measure available width for layout decisions
   useLayoutEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
@@ -57,58 +62,54 @@ export function TabBar({
     return () => observer.disconnect();
   }, []);
 
-  // === Responsive visibility budget ===
-  // How many unpinned tabs fit given the current container width?
-  // - Pinned always stay visible (they're the user's workbench)
-  // - Active unpinned is guaranteed visible (swapped in from overflow if needed)
-  const { visibleUnpinned, overflowTabs } = useMemo(() => {
+  // === Visible / overflow split ===
+  // Goal: every visible tab is at least readable (>= MIN_UNPINNED_WIDTH).
+  // INVARIANTS:
+  //   1. Active tab is always visible.
+  //   2. Visible tabs render in their original (creation) order — so a tab
+  //      coming back from overflow lands in its familiar slot.
+  //   3. Overflow holds non-active tabs whose lastActivatedAt is oldest.
+  const { visibleUnpinned, overflowTabs, tabWidth } = useMemo(() => {
     if (containerWidth === 0 || unpinnedTabs.length === 0) {
-      return { visibleUnpinned: unpinnedTabs, overflowTabs: [] as Tab[] };
+      return { visibleUnpinned: unpinnedTabs, overflowTabs: [] as Tab[], tabWidth: MAX_UNPINNED_WIDTH };
     }
 
-    const pinnedWidth =
-      pinnedTabs.length > 0
-        ? pinnedTabs.length * PINNED_WIDTH + PINNED_CONTAINER_PADDING
-        : 0;
+    const pinnedWidth = pinnedTabs.length > 0
+      ? pinnedTabs.length * PINNED_WIDTH + PINNED_CONTAINER_PADDING
+      : 0;
     const separatorWidth = pinnedTabs.length > 0 ? SEPARATOR_WIDTH : 0;
+    const baseAvailable = Math.max(0, containerWidth - pinnedWidth - separatorWidth - PLUS_BUTTON_WIDTH);
 
-    // Assume overflow button may appear — reserve its width up front so we
-    // don't need a second pass when the threshold is crossed.
-    const reservedRight = PLUS_BUTTON_WIDTH + OVERFLOW_BUTTON_WIDTH;
-
-    const budget = containerWidth - pinnedWidth - separatorWidth - reservedRight;
-    const maxVisible = Math.max(1, Math.floor(budget / UNPINNED_WIDTH));
-
-    if (unpinnedTabs.length <= maxVisible) {
-      return { visibleUnpinned: unpinnedTabs, overflowTabs: [] as Tab[] };
+    // First pass: do all unpinned tabs fit at min width WITHOUT the overflow
+    // chevron taking up space?
+    const maxNoOverflow = Math.max(1, Math.floor(baseAvailable / MIN_UNPINNED_WIDTH));
+    if (unpinnedTabs.length <= maxNoOverflow) {
+      const width = Math.min(MAX_UNPINNED_WIDTH, Math.floor(baseAvailable / unpinnedTabs.length));
+      return { visibleUnpinned: unpinnedTabs, overflowTabs: [] as Tab[], tabWidth: width };
     }
 
-    // Keep the rightmost `maxVisible` tabs (newest are on the right).
-    const tail = unpinnedTabs.slice(-maxVisible);
-    const activeInTail = tail.some(t => t.id === activeTabId);
+    // Second pass: with overflow chevron eating its slice
+    const availableWithOverflow = Math.max(0, baseAvailable - OVERFLOW_BUTTON_WIDTH);
+    const maxVisible = Math.max(1, Math.floor(availableWithOverflow / MIN_UNPINNED_WIDTH));
+    const width = Math.min(MAX_UNPINNED_WIDTH, Math.floor(availableWithOverflow / maxVisible));
 
-    if (activeInTail) {
-      return {
-        visibleUnpinned: tail,
-        overflowTabs: unpinnedTabs.slice(0, -maxVisible),
-      };
+    // Pick visible: active first (invariant 1), then most-recently-used non-active
+    const visibleSet = new Set<string>();
+    if (unpinnedTabs.some(t => t.id === activeTabId)) {
+      visibleSet.add(activeTabId);
+    }
+    const sortedByMRU = [...unpinnedTabs]
+      .filter(t => t.id !== activeTabId)
+      .sort((a, b) => (b.lastActivatedAt ?? 0) - (a.lastActivatedAt ?? 0));
+    for (const t of sortedByMRU) {
+      if (visibleSet.size >= maxVisible) break;
+      visibleSet.add(t.id);
     }
 
-    // Active is in the overflow zone → swap it into the leftmost visible slot
-    // so the user can always see what they're currently looking at.
-    const active = unpinnedTabs.find(t => t.id === activeTabId);
-    if (!active) {
-      return {
-        visibleUnpinned: tail,
-        overflowTabs: unpinnedTabs.slice(0, -maxVisible),
-      };
-    }
-    const adjusted = [active, ...tail.slice(1)];
-    const adjustedIds = new Set(adjusted.map(t => t.id));
-    return {
-      visibleUnpinned: adjusted,
-      overflowTabs: unpinnedTabs.filter(t => !adjustedIds.has(t.id)),
-    };
+    // Render in original order (invariant 2)
+    const visibleUnpinned = unpinnedTabs.filter(t => visibleSet.has(t.id));
+    const overflowTabs = unpinnedTabs.filter(t => !visibleSet.has(t.id));
+    return { visibleUnpinned, overflowTabs, tabWidth: width };
   }, [containerWidth, pinnedTabs, unpinnedTabs, activeTabId]);
 
   return (
@@ -155,41 +156,49 @@ export function TabBar({
           <div className="w-px h-4 bg-border/50 mx-1 flex-shrink-0" />
         )}
 
-        {/* Visible unpinned tabs */}
-        {visibleUnpinned.map((tab) => {
-          const isActive = tab.id === activeTabId;
-          const Icon = tab.icon;
-          return (
-            <div
-              key={tab.id}
-              onClick={() => onTabClick(tab.id)}
-              onContextMenu={(e) => onTabContext(e, tab.id)}
-              onMouseDown={(e) => { if (tab.closeable) startTabDrag(e, tab.id); }}
-              className={`group relative flex items-center gap-1.5 h-[30px] rounded-md cursor-pointer transition-all duration-150 min-w-[80px] max-w-[160px] flex-shrink
-                ${tab.closeable ? 'pl-2 pr-1' : 'px-2'}
-                ${isActive
-                  ? 'bg-sidebar-accent text-sidebar-foreground'
-                  : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'
-                }`}
-            >
-              {tab.miniAppId ? (
-                tab.miniAppLogoUrl
-                  ? <img src={tab.miniAppLogoUrl} alt="" className="w-3.5 h-3.5 rounded-[3px] object-cover flex-shrink-0" />
-                  : <div className="w-3.5 h-3.5 rounded-[3px] flex items-center justify-center text-white text-[6px] flex-shrink-0" style={{ background: tab.miniAppColor }}>{tab.miniAppInitial}</div>
-              ) : <Icon size={13} strokeWidth={1.6} className="flex-shrink-0" />}
-              <span className="text-[11px] truncate">{tab.title}</span>
-              {tab.closeable && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onTabClose(tab.id); }}
-                  className={`w-[18px] h-[18px] flex items-center justify-center rounded-sm hover:bg-foreground/10 transition-colors flex-shrink-0 ml-auto
-                    ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                >
-                  <X size={10} />
-                </button>
-              )}
-            </div>
-          );
-        })}
+        {/* Visible unpinned tabs — animated in/out as they swap with overflow */}
+        <AnimatePresence initial={false}>
+          {visibleUnpinned.map((tab) => {
+            const isActive = tab.id === activeTabId;
+            const Icon = tab.icon;
+            return (
+              <motion.div
+                key={tab.id}
+                layout
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: tabWidth }}
+                exit={{ opacity: 0, width: 0 }}
+                transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                style={{ width: tabWidth }}
+                onClick={() => onTabClick(tab.id)}
+                onContextMenu={(e) => onTabContext(e, tab.id)}
+                onMouseDown={(e) => { if (tab.closeable) startTabDrag(e, tab.id); }}
+                className={`group relative flex items-center gap-1.5 h-[30px] rounded-md cursor-pointer overflow-hidden flex-shrink-0
+                  ${tab.closeable ? 'pl-2 pr-1' : 'px-2'}
+                  ${isActive
+                    ? 'bg-sidebar-accent text-sidebar-foreground'
+                    : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'
+                  }`}
+              >
+                {tab.miniAppId ? (
+                  tab.miniAppLogoUrl
+                    ? <img src={tab.miniAppLogoUrl} alt="" className="w-3.5 h-3.5 rounded-[3px] object-cover flex-shrink-0" />
+                    : <div className="w-3.5 h-3.5 rounded-[3px] flex items-center justify-center text-white text-[6px] flex-shrink-0" style={{ background: tab.miniAppColor }}>{tab.miniAppInitial}</div>
+                ) : <Icon size={13} strokeWidth={1.6} className="flex-shrink-0" />}
+                <span className="text-[11px] truncate">{tab.title}</span>
+                {tab.closeable && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onTabClose(tab.id); }}
+                    className={`w-[18px] h-[18px] flex items-center justify-center rounded-sm hover:bg-foreground/10 transition-colors flex-shrink-0 ml-auto
+                      ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  >
+                    <X size={10} />
+                  </button>
+                )}
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
 
         {/* New-tab button — sits immediately to the right of the last visible tab */}
         <button
@@ -200,10 +209,11 @@ export function TabBar({
         </button>
       </div>
 
-      {/* Overflow chevron — rendered outside the overflow-hidden tabs area so the dropdown isn't clipped */}
+      {/* Overflow chevron — only renders when there are tabs to show. Lives
+          outside the overflow-hidden tabs area so its dropdown isn't clipped. */}
       {overflowTabs.length > 0 && (
         <div className="relative flex-shrink-0 pr-2">
-          <Tooltip content={`${overflowTabs.length} 个折叠标签`} side="bottom">
+          <Tooltip content={`${overflowTabs.length} 个其他标签`} side="bottom">
             <button
               onClick={() => setOverflowOpen(v => !v)}
               className={`h-7 px-1.5 flex items-center gap-0.5 rounded-md transition-colors
