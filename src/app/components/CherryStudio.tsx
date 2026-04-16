@@ -4,6 +4,7 @@ import { TabBar } from './layout/TabBar';
 import { TabContextMenu } from './ui/TabContextMenu';
 import { FloatingWindow } from './ui/FloatingWindow';
 import { SearchDialog } from './ui/SearchDialog';
+import { NewTabDialog } from './ui/NewTabDialog';
 import { DragGhost } from './ui/DragGhost';
 import { MainContent } from './MainContent';
 import {
@@ -31,6 +32,7 @@ function CherryStudioInner() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, tabId: '' });
   const [hoverVisible, setHoverVisible] = useState(false);
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
+  const [newTabDialogOpen, setNewTabDialogOpen] = useState(false);
   const [hiddenApps, setHiddenApps] = useState<Set<string>>(new Set());
   const [appOrder, setAppOrder] = useState<string[]>(() => dialogAppIcons.map(a => a.id));
 
@@ -42,11 +44,16 @@ function CherryStudioInner() {
   const {
     tabs, setTabs, activeTabId, setActiveTabId,
     handleCloseTab, createTabForMenuItem,
-    createNewTab, replaceTabWithMenuItem,
+    replaceTabWithMenuItem,
+    handleDialogCreateTab,
     openTopicInNewChatTab, openSessionInNewAgentTab,
     handleOpenMiniApp, handlePinTab, handleTabTitleChange,
     handleDockToSidebar, handleUndockFromSidebar, dockedTabs,
   } = useTabs();
+
+  // New tab = open dialog (floating), pick → create the actual tab.
+  // No placeholder "newtab" tab is created anymore.
+  const openNewTabDialog = useCallback(() => setNewTabDialogOpen(true), []);
 
   const {
     detachedWindows, handleDetachTab, handleReattach, handleCloseWindow,
@@ -167,18 +174,18 @@ function CherryStudioInner() {
     createTabForMenuItem(menuItemId);
   }, [tabs, activeTabId, createTabForMenuItem, replaceTabWithMenuItem, setActiveTabId]);
 
-  // Cmd/Ctrl+T: open a new tab (browser-like)
+  // Cmd/Ctrl+T: open the new-tab dialog (floating)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 't') {
         e.preventDefault();
-        createNewTab();
+        openNewTabDialog();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [createNewTab]);
+  }, [openNewTabDialog]);
 
   // ===========================
   // Drag callbacks (bridge hooks)
@@ -275,7 +282,7 @@ function CherryStudioInner() {
               e.preventDefault();
               setContextMenu({ visible: true, x: e.clientX, y: e.clientY, tabId });
             }}
-            onNewTab={createNewTab}
+            onNewTab={openNewTabDialog}
             startTabDrag={onStartTabDrag}
           />
 
@@ -365,6 +372,14 @@ function CherryStudioInner() {
         <SearchDialog
           open={searchDialogOpen}
           onClose={() => setSearchDialogOpen(false)}
+        />
+
+        <NewTabDialog
+          open={newTabDialogOpen}
+          onClose={() => setNewTabDialogOpen(false)}
+          onSelect={(id) => { handleDialogCreateTab(id); setNewTabDialogOpen(false); }}
+          hiddenApps={hiddenApps}
+          appOrder={appOrder}
         />
 
         <SettingsPage
