@@ -1684,8 +1684,8 @@ function MultiSelectPicker({
 // Assistant Run Page
 // ===========================
 
-export function AssistantRunPage() {
-  const { editAssistantInLibrary: onEditAssistantInLibrary, navigateToKnowledge: onNavigateToKnowledge, navigateToLibrary: _navLib, changeTabTitle: onTabTitleChange, openSettings: onOpenSettings } = useGlobalActions();
+export function AssistantRunPage({ initialTopicId }: { initialTopicId?: string } = {}) {
+  const { editAssistantInLibrary: onEditAssistantInLibrary, navigateToKnowledge: onNavigateToKnowledge, navigateToLibrary: _navLib, changeTabTitle: onTabTitleChange, openSettings: onOpenSettings, requestOpenTopic } = useGlobalActions();
   const onNavigateToLibrary = () => _navLib('assistant');
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [input, setInput] = useState('');
@@ -1701,7 +1701,7 @@ export function AssistantRunPage() {
 
   // Topics
   const [topics, setTopics] = useState<AssistantTopic[]>(MOCK_TOPICS);
-  const [activeTopicId, setActiveTopicId] = useState<string | null>('new-topic-init');
+  const [activeTopicId, setActiveTopicId] = useState<string | null>(initialTopicId || 'new-topic-init');
   const [newTopicCounter, setNewTopicCounter] = useState(1);
 
   // Ensure there's always an initial "新话题"
@@ -1717,6 +1717,17 @@ export function AssistantRunPage() {
         status: 'active' as const,
       }, ...prev]);
     }
+  }, []);
+
+  // When this chat tab was opened from a pinned tab's topic selection,
+  // load the appropriate messages for the initial topic on mount.
+  useEffect(() => {
+    if (!initialTopicId) return;
+    if (initialTopicId === 'topic-11') setMessages(MOCK_PARALLEL_MESSAGES);
+    else if (initialTopicId === 'topic-39') setMessages(MOCK_MULTI_ASSISTANT_MESSAGES);
+    else setMessages(MOCK_MESSAGES);
+    // Only run on mount — subsequent topic changes go through handleSelectTopic
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const activeTopic = useMemo(() => topics.find(t => t.id === activeTopicId), [topics, activeTopicId]);
@@ -1880,6 +1891,11 @@ export function AssistantRunPage() {
   }, []);
 
   const handleSelectTopic = useCallback((id: string) => {
+    // Pin-protected navigation: if the current tab is pinned/home/miniapp, open in new tab
+    // instead of replacing the pinned tab's topic.
+    const topic = topics.find(t => t.id === id);
+    if (requestOpenTopic(id, topic?.title)) return;
+
     setActiveTopicId(id);
     // Reset UI state for a clean topic view
     setActiveArtifact(null);
@@ -1896,7 +1912,7 @@ export function AssistantRunPage() {
     } else {
       setMessages(MOCK_MESSAGES);
     }
-  }, []);
+  }, [topics, requestOpenTopic]);
 
   // Active artifact — opened by clicking artifact indicators in messages
   const [activeArtifact, setActiveArtifact] = useState<ArtifactData | null>(null);

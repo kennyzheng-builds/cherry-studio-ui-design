@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import React from 'react';
 import {
   MessageCircle, Palette, Languages,
-  Home, Puzzle, MousePointerClick,
+  Home, Puzzle, MousePointerClick, Sparkles,
 } from 'lucide-react';
 import type { Tab, MenuItem } from '@/app/types';
 import { menuItems, MULTI_INSTANCE_ITEMS } from '@/app/config/constants';
+
+export const NEW_TAB_MENU_ID = 'newtab';
 
 // ===========================
 // Tab persistence helpers
@@ -24,6 +26,7 @@ const ICON_MAP: Record<string, React.ElementType> = {};
 menuItems.forEach(m => { ICON_MAP[m.id] = m.icon; });
 ICON_MAP['home'] = Home;
 ICON_MAP['miniapp-fallback'] = Puzzle;
+ICON_MAP[NEW_TAB_MENU_ID] = Sparkles;
 
 function serializeTabs(tabs: Tab[]): string {
   const serializable: SerializableTab[] = tabs.map(({ icon, ...rest }) => ({
@@ -96,6 +99,10 @@ export interface UseTabsReturn {
   setActiveTabId: React.Dispatch<React.SetStateAction<string>>;
   handleCloseTab: (id: string) => void;
   createTabForMenuItem: (menuItemId: string) => void;
+  createNewTab: () => void;
+  replaceTabWithMenuItem: (tabId: string, menuItemId: string) => void;
+  openTopicInNewChatTab: (topicId: string, title?: string) => void;
+  openSessionInNewAgentTab: (sessionId: string, title?: string) => void;
   handleSidebarItemClick: (menuItemId: string, onAfter?: () => void) => void;
   handleDialogCreateTab: (menuItemId: string, onAfter?: () => void) => void;
   handleOpenMiniApp: (app: { id: string; name: string; color: string; initial: string; url: string; logoUrl?: string }) => void;
@@ -139,6 +146,78 @@ export function useTabs(): UseTabsReturn {
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(newId);
   }, []);
+
+  const createNewTab = useCallback(() => {
+    const newId = `newtab-${Date.now()}`;
+    const newTab: Tab = {
+      id: newId,
+      title: '新建标签页',
+      icon: Sparkles,
+      closeable: true,
+      menuItemId: NEW_TAB_MENU_ID,
+    };
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(newId);
+  }, []);
+
+  // Open a specific chat topic in a new (unpinned) chat tab.
+  // Used when the active tab is pinned/home/miniapp and the user selects a topic,
+  // so the pinned tab isn't replaced.
+  const openTopicInNewChatTab = useCallback((topicId: string, title?: string) => {
+    const chatMenu = menuItems.find(m => m.id === 'chat');
+    const newId = `t${Date.now()}`;
+    const newTab: Tab = {
+      id: newId,
+      title: title || chatMenu?.label || '聊天',
+      icon: chatMenu?.icon || MessageCircle,
+      closeable: true,
+      menuItemId: 'chat',
+      topicId,
+    };
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(newId);
+  }, []);
+
+  // Open a specific agent session in a new (unpinned) agent tab.
+  const openSessionInNewAgentTab = useCallback((sessionId: string, title?: string) => {
+    const agentMenu = menuItems.find(m => m.id === 'agent');
+    const newId = `t${Date.now()}`;
+    const newTab: Tab = {
+      id: newId,
+      title: title || agentMenu?.label || '工作',
+      icon: agentMenu?.icon || MousePointerClick,
+      closeable: true,
+      menuItemId: 'agent',
+      sessionId,
+    };
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(newId);
+  }, []);
+
+  // Browser-like: selecting an item from the new-tab page replaces the current tab
+  // (instead of stacking another tab on top).
+  const replaceTabWithMenuItem = useCallback((tabId: string, menuItemId: string) => {
+    const menuItem = menuItems.find(m => m.id === menuItemId);
+    if (!menuItem) return;
+
+    // Single-instance menu items: if another tab already owns it, jump there
+    // and close the new-tab placeholder.
+    if (!MULTI_INSTANCE_ITEMS.includes(menuItemId)) {
+      const existing = tabs.find(t => t.menuItemId === menuItemId && t.id !== tabId);
+      if (existing) {
+        setTabs(prev => prev.filter(t => t.id !== tabId));
+        setActiveTabId(existing.id);
+        return;
+      }
+    }
+
+    // Otherwise mutate the current tab in-place (keeps tab position & id)
+    setTabs(prev => prev.map(t => t.id === tabId
+      ? { ...t, title: menuItem.label, icon: menuItem.icon, menuItemId }
+      : t
+    ));
+    setActiveTabId(tabId);
+  }, [tabs]);
 
   const handleSidebarItemClick = useCallback((menuItemId: string, onAfter?: () => void) => {
     if (MULTI_INSTANCE_ITEMS.includes(menuItemId)) {
@@ -239,6 +318,10 @@ export function useTabs(): UseTabsReturn {
     setActiveTabId,
     handleCloseTab,
     createTabForMenuItem,
+    createNewTab,
+    replaceTabWithMenuItem,
+    openTopicInNewChatTab,
+    openSessionInNewAgentTab,
     handleSidebarItemClick,
     handleDialogCreateTab,
     handleOpenMiniApp,

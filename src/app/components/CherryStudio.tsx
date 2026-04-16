@@ -1,20 +1,18 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Puzzle } from 'lucide-react';
 import { Sidebar } from './layout/Sidebar';
 import { TabBar } from './layout/TabBar';
 import { TabContextMenu } from './ui/TabContextMenu';
 import { FloatingWindow } from './ui/FloatingWindow';
-import { NewTabDialog } from './ui/NewTabDialog';
 import { SearchDialog } from './ui/SearchDialog';
 import { DragGhost } from './ui/DragGhost';
 import { MainContent } from './MainContent';
 import {
   menuItems, getLayout,
-  dialogAppIcons, MOCK_RESOURCES,
+  dialogAppIcons, MOCK_RESOURCES, MULTI_INSTANCE_ITEMS,
 } from '@/app/config/constants';
 import type { Tab, MenuItem, ContextMenuState } from '@/app/types';
 import { SettingsPage } from './settings/SettingsPage';
-import { SettingsProvider, useSettings } from '@/app/context/SettingsContext';
+import { SettingsProvider } from '@/app/context/SettingsContext';
 import { GlobalActionProvider } from '@/app/context/GlobalActionContext';
 import type { GlobalActions } from '@/app/context/GlobalActionContext';
 import { Toaster } from 'sonner';
@@ -27,15 +25,11 @@ import { useTabDrag } from '@/app/hooks/useTabDrag';
 // Main UI
 // ===========================
 function CherryStudioInner() {
-  const { resolvedTheme, updateSetting } = useSettings();
-  const isDark = resolvedTheme === 'dark';
   const [sidebarWidth, setSidebarWidth] = useState(170);
   const [activeItem, setActiveItem] = useState('chat');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, tabId: '' });
   const [hoverVisible, setHoverVisible] = useState(false);
-  const [newTabDialogOpen, setNewTabDialogOpen] = useState(false);
-  const [newTabSearch, setNewTabSearch] = useState('');
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
   const [hiddenApps, setHiddenApps] = useState<Set<string>>(new Set());
   const [appOrder, setAppOrder] = useState<string[]>(() => dialogAppIcons.map(a => a.id));
@@ -48,6 +42,8 @@ function CherryStudioInner() {
   const {
     tabs, setTabs, activeTabId, setActiveTabId,
     handleCloseTab, createTabForMenuItem,
+    createNewTab, replaceTabWithMenuItem,
+    openTopicInNewChatTab, openSessionInNewAgentTab,
     handleOpenMiniApp, handlePinTab, handleTabTitleChange,
     handleDockToSidebar, handleUndockFromSidebar, dockedTabs,
   } = useTabs();
@@ -139,27 +135,53 @@ function CherryStudioInner() {
   // ===========================
   // Sidebar & dialog handlers
   // ===========================
+  // Pin-protection model:
+  // - Active tab pinned/home/miniapp → focus existing single-instance tab, else create new
+  // - Active tab unpinned & has menuItemId → replace in-place (kept tab id & position)
+  // - Same menuItemId → no-op
   const handleSidebarItemClick = useCallback((menuItemId: string) => {
     setActiveItem(menuItemId);
-    const existing = tabs.find(t => t.menuItemId === menuItemId);
-    if (existing && !['chat', 'agent'].includes(menuItemId)) {
-      setActiveTabId(existing.id);
-    } else {
-      createTabForMenuItem(menuItemId);
-    }
     setHoverVisible(false);
-  }, [tabs, createTabForMenuItem]);
 
-  const handleDialogCreateTab = (menuItemId: string) => {
-    setActiveItem(menuItemId);
-    const existing = tabs.find(t => t.menuItemId === menuItemId);
-    if (existing && !['chat', 'agent'].includes(menuItemId)) {
-      setActiveTabId(existing.id);
-    } else {
-      createTabForMenuItem(menuItemId);
+    const activeTab = tabs.find(t => t.id === activeTabId);
+
+    // Already on this menu item — no-op
+    if (activeTab?.menuItemId === menuItemId) return;
+
+    const isReplaceable = !!activeTab
+      && !activeTab.pinned
+      && activeTab.id !== 'home'
+      && !activeTab.miniAppId
+      && !!activeTab.menuItemId;
+
+    if (isReplaceable) {
+      replaceTabWithMenuItem(activeTab!.id, menuItemId);
+      return;
     }
-    setNewTabDialogOpen(false);
-  };
+
+    // Active tab is protected (pinned / home / miniapp) — focus existing or create new
+    if (!MULTI_INSTANCE_ITEMS.includes(menuItemId)) {
+      const existing = tabs.find(t => t.menuItemId === menuItemId);
+      if (existing) {
+        setActiveTabId(existing.id);
+        return;
+      }
+    }
+    createTabForMenuItem(menuItemId);
+  }, [tabs, activeTabId, createTabForMenuItem, replaceTabWithMenuItem, setActiveTabId]);
+
+  // Cmd/Ctrl+T: open a new tab (browser-like)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        createNewTab();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [createNewTab]);
 
   // ===========================
   // Drag callbacks (bridge hooks)
@@ -188,6 +210,31 @@ function CherryStudioInner() {
     setActiveTabId(newTab.id);
   }, [handleReattach]);
 
+  // Pin-aware topic/session openers — the pages call these first; if we
+  // returned true, the page should skip its own in-place switch because we
+  // opened a new tab.
+  const requestOpenTopic = useCallback((topicId: string, title?: string) => {
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    const isProtected = !!activeTab
+      && (activeTab.pinned || activeTab.id === 'home' || !!activeTab.miniAppId);
+    if (isProtected) {
+      openTopicInNewChatTab(topicId, title);
+      return true;
+    }
+    return false;
+  }, [tabs, activeTabId, openTopicInNewChatTab]);
+
+  const requestOpenSession = useCallback((sessionId: string, title?: string) => {
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    const isProtected = !!activeTab
+      && (activeTab.pinned || activeTab.id === 'home' || !!activeTab.miniAppId);
+    if (isProtected) {
+      openSessionInNewAgentTab(sessionId, title);
+      return true;
+    }
+    return false;
+  }, [tabs, activeTabId, openSessionInNewAgentTab]);
+
   // ===========================
   // GlobalActionContext value
   // ===========================
@@ -200,12 +247,21 @@ function CherryStudioInner() {
     libraryReturn: handleLibraryReturn,
     changeTabTitle: handleTabTitleChange,
     openSettings: () => setSettingsOpen(true),
+    replaceTabWithMenuItem,
+    requestOpenTopic,
+    requestOpenSession,
+    setHiddenApps,
+    setAppOrder,
     libraryEditResourceId,
     libraryCreateType,
+    hiddenApps,
+    appOrder,
   }), [
     handleOpenMiniApp, handlePinTab, handleEditAssistantInLibrary,
     handleNavigateToKnowledge, handleNavigateToLibrary, handleLibraryReturn,
     handleTabTitleChange, libraryEditResourceId, libraryCreateType,
+    replaceTabWithMenuItem, requestOpenTopic, requestOpenSession,
+    hiddenApps, appOrder,
   ]);
 
   // ===========================
@@ -218,16 +274,13 @@ function CherryStudioInner() {
           <TabBar
             tabs={tabs}
             activeTabId={activeTabId}
-            isDark={isDark}
             onTabClick={setActiveTabId}
             onTabClose={handleCloseTab}
             onTabContext={(e, tabId) => {
               e.preventDefault();
               setContextMenu({ visible: true, x: e.clientX, y: e.clientY, tabId });
             }}
-            onNewTab={() => { setNewTabSearch(''); setNewTabDialogOpen(true); }}
-            onToggleTheme={() => updateSetting('theme', isDark ? 'light' : 'dark')}
-            onSettingsClick={() => setSettingsOpen(true)}
+            onNewTab={createNewTab}
             startTabDrag={onStartTabDrag}
           />
 
@@ -312,18 +365,6 @@ function CherryStudioInner() {
             else handleDockToSidebar(tabId);
           }}
           onDismiss={() => setContextMenu(prev => ({ ...prev, visible: false }))}
-        />
-
-        <NewTabDialog
-          open={newTabDialogOpen}
-          search={newTabSearch}
-          onSearchChange={setNewTabSearch}
-          onSelect={handleDialogCreateTab}
-          onClose={() => setNewTabDialogOpen(false)}
-          hiddenApps={hiddenApps}
-          setHiddenApps={setHiddenApps}
-          appOrder={appOrder}
-          setAppOrder={setAppOrder}
         />
 
         <SearchDialog

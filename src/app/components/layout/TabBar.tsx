@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Sun, Moon, Plus, X, Home, Settings,
+  Plus, X, Home,
 } from 'lucide-react';
 import { Tooltip } from '@/app/components/Tooltip';
 import type { Tab } from '@/app/types';
@@ -8,26 +8,20 @@ import type { Tab } from '@/app/types';
 interface TabBarProps {
   tabs: Tab[];
   activeTabId: string;
-  isDark: boolean;
   onTabClick: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
   onTabContext: (e: React.MouseEvent, tabId: string) => void;
   onNewTab: () => void;
-  onToggleTheme: () => void;
-  onSettingsClick?: () => void;
   startTabDrag: (e: React.MouseEvent, tabId: string) => void;
 }
 
 export function TabBar({
   tabs,
   activeTabId,
-  isDark,
   onTabClick,
   onTabClose,
   onTabContext,
   onNewTab,
-  onToggleTheme,
-  onSettingsClick,
   startTabDrag,
 }: TabBarProps) {
   const homeTab = tabs.find(t => t.id === 'home')!;
@@ -140,26 +134,6 @@ export function TabBar({
         >
           <Plus size={14} />
         </button>
-      </div>
-
-      {/* Right actions */}
-      <div className="flex items-center gap-1 px-2.5 flex-shrink-0">
-        <Tooltip content="设置" side="bottom">
-          <button
-            onClick={onSettingsClick}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-          >
-            <Settings size={15} strokeWidth={1.6} />
-          </button>
-        </Tooltip>
-        <Tooltip content={isDark ? '浅模式' : '深色模式'} side="bottom">
-          <button
-            onClick={onToggleTheme}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-          >
-            {isDark ? <Sun size={15} strokeWidth={1.6} /> : <Moon size={15} strokeWidth={1.6} />}
-          </button>
-        </Tooltip>
       </div>
     </div>
   );

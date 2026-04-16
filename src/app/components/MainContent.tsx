@@ -5,6 +5,7 @@ import { ErrorBoundary } from './shared/ErrorBoundary';
 import { HomePage } from './pages/HomePage';
 import { ChatPage } from './pages/ChatPage';
 import { GenericPage } from './pages/GenericPage';
+import { NewTabPage } from './pages/NewTabPage';
 import { TranslatePage } from './TranslatePage';
 import { NotePage } from './NotePage';
 import { CodeToolPage } from './CodeToolPage';
@@ -99,8 +100,17 @@ const TabContent = React.memo(function TabContent({ tab, isActive }: { tab: Tab;
 
   return (
     <ErrorBoundary>
-      {menuItemId === 'chat' ? <AssistantRunPage />
-        : menuItemId === 'agent' ? <AgentRunPage />
+      {menuItemId === 'newtab' ? (
+          <NewTabPage
+            onSelect={(id) => actions.replaceTabWithMenuItem(tab.id, id)}
+            hiddenApps={actions.hiddenApps}
+            setHiddenApps={actions.setHiddenApps}
+            appOrder={actions.appOrder}
+            setAppOrder={actions.setAppOrder}
+          />
+        )
+        : menuItemId === 'chat' ? <AssistantRunPage initialTopicId={tab.topicId} />
+        : menuItemId === 'agent' ? <AgentRunPage initialSessionId={tab.sessionId} />
         : menuItemId === 'models' ? <ModelServicePage />
         : menuItemId === 'painting' ? <ImagePage />
         : menuItemId === 'translate' ? <TranslatePage />

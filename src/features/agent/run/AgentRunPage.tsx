@@ -925,13 +925,20 @@ function AgentInfoPanel({ agent, onClose, onEdit }: {
 // Agent Run Page
 // ===========================
 
-export function AgentRunPage({ onBack }: { onBack?: () => void } = {}) {
-  const { navigateToLibrary: _navLib, changeTabTitle: onTabTitleChange, openSettings: onOpenSettings } = useGlobalActions();
+export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void; initialSessionId?: string } = {}) {
+  const { navigateToLibrary: _navLib, changeTabTitle: onTabTitleChange, openSettings: onOpenSettings, requestOpenSession } = useGlobalActions();
   const onNavigateToLibrary = () => _navLib('agent');
   const [sessions, setSessions] = useState<AgentSession[]>(MOCK_SESSIONS);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(initialSessionId ?? null);
   const [localMessages, setLocalMessages] = useState<Record<string, ChatMessage[]>>({});
-  const [selectedFile, setSelectedFile] = useState<string | null>('src/App.tsx');
+  const [selectedFile, setSelectedFile] = useState<string | null>(() => {
+    if (initialSessionId) {
+      const data = SESSION_DATA_MAP[initialSessionId];
+      if (data) return Object.keys(data.fileContents)[0] || null;
+      return null;
+    }
+    return 'src/App.tsx';
+  });
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [mdlSearch, setMdlSearch] = useState('');
@@ -947,8 +954,8 @@ export function AgentRunPage({ onBack }: { onBack?: () => void } = {}) {
       return matchProvider && matchSearch && matchCap;
     });
   }, [activeProvider, mdlSearch, mdlCapFilter]);
-  const [showExplorer, setShowExplorer] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
+  const [showExplorer, setShowExplorer] = useState(!!initialSessionId);
+  const [showPreview, setShowPreview] = useState(!!initialSessionId);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState(AVAILABLE_AGENTS[0]);
   const [previewMaximized, setPreviewMaximized] = useState(false);
@@ -977,6 +984,11 @@ export function AgentRunPage({ onBack }: { onBack?: () => void } = {}) {
   }, []);
 
   const handleSelectSession = useCallback((id: string) => {
+    // Pin-protected navigation: if the current tab is pinned/home/miniapp, open in new tab
+    // instead of replacing the pinned tab's session.
+    const session = sessions.find(s => s.id === id);
+    if (requestOpenSession(id, session?.title)) return;
+
     setActiveSessionId(id);
     const data = SESSION_DATA_MAP[id];
     if (data) {
@@ -990,7 +1002,7 @@ export function AgentRunPage({ onBack }: { onBack?: () => void } = {}) {
       setShowPreview(true);
       setShowExplorer(true);
     }
-  }, []);
+  }, [sessions, requestOpenSession]);
 
   const handleNewSession = useCallback(() => {
     setActiveSessionId(null);

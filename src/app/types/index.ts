@@ -49,6 +49,11 @@ export interface Tab {
   miniAppInitial?: string;
   miniAppUrl?: string;
   miniAppLogoUrl?: string;
+  // Initial content anchors for feature tabs (pin-protected navigation):
+  // when a chat/agent tab is opened from an in-page selection (topic/session),
+  // the id is recorded here so the mounted page can initialise from it.
+  topicId?: string;
+  sessionId?: string;
 }
 
 export type SidebarLayout = 'hidden' | 'icon' | 'vertical-card' | 'full';

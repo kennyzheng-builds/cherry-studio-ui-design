@@ -8,27 +8,26 @@ import {
   newTabHistoryItems, newTabFileItems, dialogQuickActions,
 } from '@/app/config/constants';
 
-export function NewTabDialog({ open, search, onSearchChange, onSelect, onClose, hiddenApps, setHiddenApps, appOrder, setAppOrder }: {
-  open: boolean; search: string; onSearchChange: (s: string) => void;
-  onSelect: (menuItemId: string) => void; onClose: () => void;
-  hiddenApps: Set<string>; setHiddenApps: React.Dispatch<React.SetStateAction<Set<string>>>;
-  appOrder: string[]; setAppOrder: React.Dispatch<React.SetStateAction<string[]>>;
-}) {
+interface NewTabPageProps {
+  onSelect: (menuItemId: string) => void;
+  hiddenApps: Set<string>;
+  setHiddenApps: React.Dispatch<React.SetStateAction<Set<string>>>;
+  appOrder: string[];
+  setAppOrder: React.Dispatch<React.SetStateAction<string[]>>;
+}
+
+export function NewTabPage({ onSelect, hiddenApps, setHiddenApps, appOrder, setAppOrder }: NewTabPageProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('全部');
   const [manageMode, setManageMode] = useState(false);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!open) return;
-    setActiveFilter('全部');
-    setTimeout(() => inputRef.current?.focus(), 50);
-    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [open, onClose]);
-  if (!open) return null;
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, []);
 
   const orderedApps = appOrder.map(id => dialogAppIcons.find(a => a.id === id)).filter((a): a is typeof dialogAppIcons[0] => !!a);
   const visibleApps = orderedApps.filter(app => !hiddenApps.has(app.id));
@@ -68,21 +67,20 @@ export function NewTabDialog({ open, search, onSearchChange, onSelect, onClose, 
   const hasResults = filteredRecent.length > 0 || filteredFiles.length > 0 || filteredActions.length > 0;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[8%]" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-[520px] bg-popover border border-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col">
+    <div className="flex-1 flex flex-col items-center justify-start pt-[8%] px-6 overflow-y-auto [&::-webkit-scrollbar]:hidden">
+      <div className="w-full max-w-[560px] bg-popover border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
         {/* Search input */}
         <div className="flex items-center gap-2 px-4 h-12 border-b border-border">
           <Search size={16} className="text-muted-foreground flex-shrink-0" />
           <input
             ref={inputRef}
             value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder="开始输入搜索..."
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
           />
           {search && (
-            <button onClick={() => onSearchChange('')} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={() => setSearch('')} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
               <X size={12} />
             </button>
           )}
@@ -134,7 +132,7 @@ export function NewTabDialog({ open, search, onSearchChange, onSelect, onClose, 
         </div>
 
         {/* Content */}
-        <div className="max-h-[380px] overflow-y-auto [&::-webkit-scrollbar]:hidden">
+        <div className="max-h-[420px] overflow-y-auto [&::-webkit-scrollbar]:hidden">
           {manageMode ? (
             /* Manage Mode */
             <div className="px-3 pt-3 pb-2">
@@ -162,8 +160,8 @@ export function NewTabDialog({ open, search, onSearchChange, onSelect, onClose, 
                       onDragOver={(e) => handleDragOver(e, idx)}
                       onDragEnd={handleDragEnd}
                       className={`flex items-center gap-3 px-2 py-2 rounded-lg transition-all cursor-grab active:cursor-grabbing select-none
-                        ${isHidden ? 'opacity-40' : ''} 
-                        ${isDragging ? 'opacity-50 scale-[0.98]' : ''} 
+                        ${isHidden ? 'opacity-40' : ''}
+                        ${isDragging ? 'opacity-50 scale-[0.98]' : ''}
                         ${isDragOver && !isDragging ? 'border-t-2 border-primary/50' : 'border-t-2 border-transparent'}
                         hover:bg-accent/50`}
                     >
@@ -277,7 +275,7 @@ export function NewTabDialog({ open, search, onSearchChange, onSelect, onClose, 
                 未能找到与搜索匹配的内容。<br />请尝试调整关键词、筛选条件或检查是否有拼写错误。
               </p>
               <button
-                onClick={() => { onSearchChange(''); setActiveFilter('全部'); }}
+                onClick={() => { setSearch(''); setActiveFilter('全部'); }}
                 className="mt-4 px-4 py-1.5 text-xs border border-border rounded-lg text-foreground hover:bg-accent transition-colors"
               >
                 清除筛选
@@ -290,9 +288,7 @@ export function NewTabDialog({ open, search, onSearchChange, onSelect, onClose, 
         <div className="flex items-center gap-3 px-4 py-2 border-t border-border/50 text-[11px] text-muted-foreground/50">
           <span className="flex items-center gap-1"><kbd className="bg-accent/60 px-1 rounded">↑↓</kbd> 选择</span>
           <span className="flex items-center gap-1"><kbd className="bg-accent/60 px-1 rounded">↵</kbd> 打开</span>
-          <span className="flex items-center gap-1"><kbd className="bg-accent/60 px-1 rounded">⌘R</kbd> 在新标签打开</span>
           <span className="flex items-center gap-1"><kbd className="bg-accent/60 px-1 rounded">⌘L</kbd> 复制链接</span>
-          <span className="flex items-center gap-1"><kbd className="bg-accent/60 px-1 rounded">ESC</kbd> 关闭</span>
           <button
             onClick={() => setManageMode(!manageMode)}
             className={`ml-auto p-1 rounded transition-colors ${manageMode ? 'text-foreground bg-accent' : 'hover:text-muted-foreground'}`}
