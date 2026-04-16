@@ -43,6 +43,10 @@ export interface Tab {
   closeable: boolean;
   pinned?: boolean;
   sidebarDocked?: boolean;
+  // When true the tab is "popped out" into a floating window. It stays in the
+  // tabs array so its rendered React tree (and thus state) is preserved — only
+  // MainContent swaps the styling from "tab pane" to "floating window".
+  detached?: boolean;
   menuItemId?: string;
   miniAppId?: string;
   miniAppColor?: string;
@@ -67,7 +71,11 @@ export interface ContextMenuState {
 
 export interface DetachedWindow {
   id: string;
-  tab: Tab;
+  /** Reference to the tab living in the main tabs array. The tab is NOT moved
+   *  out of that array when detached — only marked `detached: true`. This lets
+   *  MainContent keep the tab's React tree mounted across the transition so
+   *  component state (messages, scroll, inputs) is preserved. */
+  tabId: string;
   x: number;
   y: number;
   width: number;

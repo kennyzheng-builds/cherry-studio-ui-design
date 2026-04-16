@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sidebar } from './layout/Sidebar';
 import { TabBar } from './layout/TabBar';
 import { TabContextMenu } from './ui/TabContextMenu';
-import { FloatingWindow } from './ui/FloatingWindow';
 import { SearchDialog } from './ui/SearchDialog';
 import { NewTabDialog } from './ui/NewTabDialog';
 import { DragGhost } from './ui/DragGhost';
@@ -11,7 +10,7 @@ import {
   menuItems, getLayout,
   dialogAppIcons, MOCK_RESOURCES, MULTI_INSTANCE_ITEMS,
 } from '@/app/config/constants';
-import type { Tab, MenuItem, ContextMenuState } from '@/app/types';
+import type { Tab, MenuItem, ContextMenuState, DetachedWindow } from '@/app/types';
 import { SettingsPage } from './settings/SettingsPage';
 import { SettingsProvider } from '@/app/context/SettingsContext';
 import { GlobalActionProvider } from '@/app/context/GlobalActionContext';
@@ -55,9 +54,78 @@ function CherryStudioInner() {
   // No placeholder "newtab" tab is created anymore.
   const openNewTabDialog = useCallback(() => setNewTabDialogOpen(true), []);
 
+  // Batch close helpers for tab context menu.
+  // Protected tabs (home / miniapp / pinned / non-closeable) are preserved.
+  const isClosableSibling = useCallback((t: Tab, keepId: string) => {
+    return t.id !== keepId && t.closeable && !t.pinned && t.id !== 'home' && !t.miniAppId;
+  }, []);
+
+  const handleCloseOtherTabs = useCallback((keepTabId: string) => {
+    setTabs(prev => {
+      const next = prev.filter(t => !isClosableSibling(t, keepTabId));
+      if (!next.find(t => t.id === activeTabId)) setActiveTabId(keepTabId);
+      return next;
+    });
+  }, [activeTabId, isClosableSibling, setTabs, setActiveTabId]);
+
+  const handleCloseTabsToRight = useCallback((anchorTabId: string) => {
+    setTabs(prev => {
+      const idx = prev.findIndex(t => t.id === anchorTabId);
+      if (idx === -1) return prev;
+      const next = prev.filter((t, i) => i <= idx || !isClosableSibling(t, anchorTabId));
+      if (!next.find(t => t.id === activeTabId)) setActiveTabId(anchorTabId);
+      return next;
+    });
+  }, [activeTabId, isClosableSibling, setTabs, setActiveTabId]);
+
   const {
-    detachedWindows, handleDetachTab, handleReattach, handleCloseWindow,
+    detachedWindows, addWindow, removeWindow, updateWindow,
   } = useFloatingWindows();
+
+  // ===========================
+  // Detach / reattach orchestration
+  // ===========================
+  // Tabs are *not* removed from the tabs array on detach — they're only marked
+  // `detached: true`. MainContent swaps styling from inline pane to floating
+  // window while keeping the React tree stable, so component state (chat
+  // messages, inputs, scroll) survives the transition.
+  const handleDetachTab = useCallback((tabId: string, x: number, y: number) => {
+    setTabs(prev => {
+      const tab = prev.find(t => t.id === tabId);
+      if (!tab || !tab.closeable) return prev;
+      addWindow(tab, x, y);
+      return prev.map(t => t.id === tabId ? { ...t, detached: true } : t);
+    });
+    // If we just detached the active tab, switch focus to another visible tab
+    setActiveTabId(curr => {
+      if (curr !== tabId) return curr;
+      const others = tabs.filter(t => t.id !== tabId && !t.detached);
+      const closeable = others.filter(t => t.closeable);
+      if (closeable.length > 0) return closeable[closeable.length - 1].id;
+      if (others.length > 0) return others[0].id;
+      return curr;
+    });
+  }, [tabs, addWindow]);
+
+  const handleReattachWindow = useCallback((win: DetachedWindow) => {
+    removeWindow(win.id);
+    setTabs(prev => prev.map(t => t.id === win.tabId ? { ...t, detached: false } : t));
+    setActiveTabId(win.tabId);
+  }, [removeWindow]);
+
+  const handleCloseFloatingWindow = useCallback((win: DetachedWindow) => {
+    removeWindow(win.id);
+    // Closing the window closes the underlying tab too (browser behaviour)
+    setTabs(prev => prev.filter(t => t.id !== win.tabId));
+    setActiveTabId(curr => {
+      if (curr !== win.tabId) return curr;
+      const remaining = tabs.filter(t => t.id !== win.tabId && !t.detached);
+      const closeable = remaining.filter(t => t.closeable);
+      if (closeable.length > 0) return closeable[closeable.length - 1].id;
+      if (remaining.length > 0) return remaining[0].id;
+      return curr;
+    });
+  }, [removeWindow, tabs]);
 
   const {
     dragGhost, sidebarContainerRef, startTabDrag, startSidebarDrag,
@@ -193,26 +261,13 @@ function CherryStudioInner() {
   const onStartTabDrag = useCallback((e: React.MouseEvent, tabId: string) => {
     startTabDrag(e, tabId, {
       onDockToSidebar: handleDockToSidebar,
-      onDetachTab: (tid, x, y) => {
-        handleDetachTab(tid, x, y, tabs, (remaining) => {
-          setTabs(prev => prev.filter(t => t.id !== tid));
-          const closeable = remaining.filter(t => t.closeable);
-          if (closeable.length > 0) setActiveTabId(closeable[closeable.length - 1].id);
-          else if (remaining.length > 0) setActiveTabId(remaining[0].id);
-        });
-      },
+      onDetachTab: (tid, x, y) => handleDetachTab(tid, x, y),
     });
-  }, [tabs, startTabDrag, handleDockToSidebar, handleDetachTab]);
+  }, [startTabDrag, handleDockToSidebar, handleDetachTab]);
 
   const onStartSidebarDrag = useCallback((e: React.MouseEvent, tabId: string) => {
     startSidebarDrag(e, tabId, { onUndockFromSidebar: handleUndockFromSidebar });
   }, [startSidebarDrag, handleUndockFromSidebar]);
-
-  const onReattach = useCallback((win: typeof detachedWindows[0]) => {
-    const newTab = handleReattach(win);
-    setTabs(prev => [...prev, newTab]);
-    setActiveTabId(newTab.id);
-  }, [handleReattach]);
 
   // Pin-aware topic/session openers — the pages call these first; if we
   // returned true, the page should skip its own in-place switch because we
@@ -308,8 +363,15 @@ function CherryStudioInner() {
             </div>
 
             <div className={`flex-1 flex flex-col min-w-0 pr-2 pb-2 ${getLayout(sidebarWidth) === 'hidden' ? 'pl-2' : ''}`}>
-              <div className="flex-1 bg-background rounded-xl overflow-hidden flex flex-col min-h-0 relative">
-                <MainContent tabs={tabs} activeTabId={activeTabId} />
+              <div className="flex-1 bg-background rounded-xl flex flex-col min-h-0 relative">
+                <MainContent
+                  tabs={tabs}
+                  activeTabId={activeTabId}
+                  detachedWindows={detachedWindows}
+                  onReattachWindow={handleReattachWindow}
+                  onCloseFloatingWindow={handleCloseFloatingWindow}
+                  onUpdateWindow={updateWindow}
+                />
               </div>
             </div>
           </div>
@@ -323,15 +385,6 @@ function CherryStudioInner() {
               tabs={tabs}
             />
           )}
-
-          {detachedWindows.map(win => (
-            <FloatingWindow
-              key={win.id}
-              win={win}
-              onClose={handleCloseWindow}
-              onReattach={onReattach}
-            />
-          ))}
 
           {hoverVisible && getLayout(sidebarWidth) === 'hidden' && (
             <Sidebar
@@ -359,13 +412,12 @@ function CherryStudioInner() {
         <TabContextMenu
           state={contextMenu}
           tab={tabs.find(t => t.id === contextMenu.tabId)}
+          tabs={tabs}
           onPin={handlePinTab}
           onClose={handleCloseTab}
-          onDock={(tabId) => {
-            const t = tabs.find(tt => tt.id === tabId);
-            if (t?.sidebarDocked) handleUndockFromSidebar(tabId);
-            else handleDockToSidebar(tabId);
-          }}
+          onCloseOthers={handleCloseOtherTabs}
+          onCloseRight={handleCloseTabsToRight}
+          onDetach={(tabId, x, y) => handleDetachTab(tabId, x, y)}
           onDismiss={() => setContextMenu(prev => ({ ...prev, visible: false }))}
         />
 

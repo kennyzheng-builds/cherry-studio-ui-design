@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useGlobalActions } from '@/app/context/GlobalActionContext';
+import { useIsFloatingWindow } from '@/app/context/FloatingWindowContext';
 import {
   ChevronDown, ChevronRight, ChevronUp, X, Copy, Check, Maximize2, Minimize2,
   Bot, Plus, ArrowUp, FileText, Code2, Eye, BookOpen,
@@ -1686,6 +1687,9 @@ function MultiSelectPicker({
 
 export function AssistantRunPage({ initialTopicId }: { initialTopicId?: string } = {}) {
   const { editAssistantInLibrary: onEditAssistantInLibrary, navigateToKnowledge: onNavigateToKnowledge, navigateToLibrary: _navLib, changeTabTitle: onTabTitleChange, openSettings: onOpenSettings, requestOpenTopic } = useGlobalActions();
+  // In a popout window we hide navigation UI (new topic, history, etc.) since
+  // a popout is a single-conversation window — can't switch or open others.
+  const isFloating = useIsFloatingWindow();
   const onNavigateToLibrary = () => _navLib('assistant');
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [input, setInput] = useState('');
@@ -2118,7 +2122,7 @@ export function AssistantRunPage({ initialTopicId }: { initialTopicId?: string }
           onToggleMultiModel={handleToggleMultiModel}
           onCreateAssistant={onNavigateToLibrary}
         />
-        {activeTopic && (
+        {activeTopic && !isFloating && (
           <TopicBreadcrumb
             topics={topics}
             activeTopic={activeTopic}
@@ -2132,12 +2136,16 @@ export function AssistantRunPage({ initialTopicId }: { initialTopicId?: string }
               并行 {selectedAssistants.length > 1 ? `${selectedAssistants.length} 助手` : `${selectedModels.length} 模型`}
             </span>
           )}
-          <Tooltip content="新建话题" side="bottom"><button onClick={handleNewTopic} className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/15 transition-colors">
-            <MessageCirclePlus size={13} />
-          </button></Tooltip>
-          <Tooltip content="历史记录" side="bottom"><button onClick={() => { setHistoryInitialAssistant(null); setShowHistory(true); }} className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/15 transition-colors">
-            <History size={13} />
-          </button></Tooltip>
+          {!isFloating && (
+            <Tooltip content="新建话题" side="bottom"><button onClick={handleNewTopic} className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/15 transition-colors">
+              <MessageCirclePlus size={13} />
+            </button></Tooltip>
+          )}
+          {!isFloating && (
+            <Tooltip content="历史记录" side="bottom"><button onClick={() => { setHistoryInitialAssistant(null); setShowHistory(true); }} className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/15 transition-colors">
+              <History size={13} />
+            </button></Tooltip>
+          )}
           <div className="relative">
             <Tooltip content="历史文件" side="bottom"><button onClick={() => setShowHeaderFileHistory(v => !v)}
               className={`p-1.5 rounded transition-colors ${showHeaderFileHistory ? 'text-foreground/80 bg-accent/25' : 'text-muted-foreground hover:text-foreground hover:bg-accent/15'}`}>
