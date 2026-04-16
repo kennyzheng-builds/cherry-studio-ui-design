@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Search, X, Filter, SortAsc, CalendarDays,
-  MessageCircle, Eye, EyeOff, RotateCcw, GripVertical, Settings,
+  Search, X, MessageCircle, Eye, EyeOff, RotateCcw, GripVertical, Settings,
 } from 'lucide-react';
 import {
   dialogAppIcons, dialogFilterTabs,
@@ -67,147 +66,168 @@ export function NewTabPage({ onSelect, hiddenApps, setHiddenApps, appOrder, setA
   const hasResults = filteredRecent.length > 0 || filteredFiles.length > 0 || filteredActions.length > 0;
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-start pt-[8%] px-6 overflow-y-auto [&::-webkit-scrollbar]:hidden">
-      <div className="w-full max-w-[560px] bg-popover border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
-        {/* Search input */}
-        <div className="flex items-center gap-2 px-4 h-12 border-b border-border">
-          <Search size={16} className="text-muted-foreground flex-shrink-0" />
-          <input
-            ref={inputRef}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="开始输入搜索..."
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
-          />
-          {search && (
-            <button onClick={() => setSearch('')} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
-              <X size={12} />
-            </button>
-          )}
-          <span className="text-[11px] text-muted-foreground/50 flex-shrink-0 select-none">Aa</span>
-          <button className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"><Filter size={14} /></button>
-        </div>
+    <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden relative">
+      {/* Manage-apps gear — corner anchored, low-key */}
+      <button
+        onClick={() => setManageMode(v => !v)}
+        className={`absolute top-4 right-4 w-8 h-8 rounded-lg flex items-center justify-center transition-colors z-10 ${
+          manageMode
+            ? 'bg-accent text-foreground'
+            : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-accent/40'
+        }`}
+        title="管理快捷应用"
+      >
+        <Settings size={14} />
+      </button>
 
-        {/* Create new - App icons grid */}
-        {visibleApps.length > 0 && (
-        <div className="px-4 py-3 border-b border-border/50">
-          <div className="flex flex-wrap gap-x-1 gap-y-2">
-            {visibleApps.map((app) => {
-              const Icon = app.icon;
-              return (
-                <button
-                  key={app.id}
-                  onClick={() => onSelect(app.id)}
-                  className="flex flex-col items-center gap-1.5 w-[52px] py-1 rounded-lg group hover:bg-accent/30 transition-colors"
-                >
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${app.bg} ${app.color} group-hover:scale-105 group-active:scale-95`}>
-                    <Icon size={17} strokeWidth={1.8} />
-                  </div>
-                  <span className="text-[10px] text-muted-foreground/70 group-hover:text-foreground transition-colors leading-none">{app.label}</span>
-                </button>
-              );
-            })}
+      <div className="w-full max-w-[720px] mx-auto px-8 pt-[8%] pb-16">
+        {/* Hero search */}
+        <div className="mb-8">
+          <div className="flex items-center gap-3 h-12 px-4 rounded-2xl bg-muted/40 hover:bg-muted/60 focus-within:bg-muted/60 transition-colors">
+            <Search size={16} className="text-muted-foreground/60 flex-shrink-0" />
+            <input
+              ref={inputRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="搜索对话、文件，或开始新任务"
+              className="flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors flex-shrink-0"
+              >
+                <X size={13} />
+              </button>
+            )}
           </div>
         </div>
+
+        {/* App launchpad */}
+        {!manageMode && visibleApps.length > 0 && (
+          <div className="mb-10">
+            <div className="grid grid-cols-6 gap-y-4 gap-x-2">
+              {visibleApps.map((app) => {
+                const Icon = app.icon;
+                return (
+                  <button
+                    key={app.id}
+                    onClick={() => onSelect(app.id)}
+                    className="flex flex-col items-center gap-2 py-1.5 rounded-xl group hover:bg-accent/30 transition-colors"
+                  >
+                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-transform ${app.bg} ${app.color} group-hover:scale-[1.04] group-active:scale-[0.96]`}>
+                      <Icon size={20} strokeWidth={1.7} />
+                    </div>
+                    <span className="text-[11px] text-muted-foreground group-hover:text-foreground transition-colors leading-none">
+                      {app.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         )}
 
-        {/* Filter pills */}
-        <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border/50 overflow-x-auto [&::-webkit-scrollbar]:hidden">
-          {['全部', ...dialogFilterTabs].map(f => (
-            <button
-              key={f}
-              onClick={() => setActiveFilter(f)}
-              className={`px-2.5 py-1 rounded-full text-xs whitespace-nowrap transition-colors border ${
-                activeFilter === f
-                  ? 'bg-foreground text-background border-foreground'
-                  : 'bg-transparent text-muted-foreground border-border hover:bg-accent hover:text-foreground'
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-          <div className="flex-1" />
-          <button className="text-muted-foreground/40 hover:text-muted-foreground transition-colors"><SortAsc size={12} /></button>
-          <button className="text-muted-foreground/40 hover:text-muted-foreground transition-colors"><CalendarDays size={12} /></button>
-        </div>
-
-        {/* Content */}
-        <div className="max-h-[420px] overflow-y-auto [&::-webkit-scrollbar]:hidden">
-          {manageMode ? (
-            /* Manage Mode */
-            <div className="px-3 pt-3 pb-2">
-              <div className="flex items-center justify-between mb-3 px-1">
-                <span className="text-xs text-muted-foreground">管理快捷应用 · 拖拽排序，点击眼睛隐藏/显示</span>
-                <button
-                  onClick={resetApps}
-                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent"
-                >
-                  <RotateCcw size={11} />
-                  重置
-                </button>
-              </div>
-              <div className="space-y-0.5">
-                {orderedApps.map((app, idx) => {
-                  const Icon = app.icon;
-                  const isHidden = hiddenApps.has(app.id);
-                  const isDragging = dragIdx === idx;
-                  const isDragOver = dragOverIdx === idx;
-                  return (
-                    <div
-                      key={app.id}
-                      draggable
-                      onDragStart={() => handleDragStart(idx)}
-                      onDragOver={(e) => handleDragOver(e, idx)}
-                      onDragEnd={handleDragEnd}
-                      className={`flex items-center gap-3 px-2 py-2 rounded-lg transition-all cursor-grab active:cursor-grabbing select-none
-                        ${isHidden ? 'opacity-40' : ''}
-                        ${isDragging ? 'opacity-50 scale-[0.98]' : ''}
-                        ${isDragOver && !isDragging ? 'border-t-2 border-primary/50' : 'border-t-2 border-transparent'}
-                        hover:bg-accent/50`}
-                    >
-                      <GripVertical size={14} className="text-muted-foreground/30 flex-shrink-0" />
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${app.bg} ${app.color}`}>
-                        <Icon size={16} />
-                      </div>
-                      <span className="text-sm text-foreground flex-1">{app.label}</span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); toggleAppVisibility(app.id); }}
-                        className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
-                          isHidden
-                            ? 'text-muted-foreground/40 hover:text-foreground hover:bg-accent'
-                            : 'text-foreground/70 hover:text-foreground hover:bg-accent'
-                        }`}
-                        title={isHidden ? '显示' : '隐藏'}
-                      >
-                        {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+        {/* Manage mode — replaces launchpad when active */}
+        {manageMode && (
+          <div className="mb-10">
+            <div className="flex items-center justify-between mb-4 px-1">
+              <span className="text-xs text-muted-foreground">拖拽排序 · 点击眼睛隐藏 / 显示</span>
+              <button
+                onClick={resetApps}
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent"
+              >
+                <RotateCcw size={11} />
+                重置
+              </button>
             </div>
-          ) : hasResults ? (
-            <div className="contents">
-              {/* Recent */}
-              {filteredRecent.length > 0 && (
-                <div className="px-2 pt-3 pb-1">
-                  <p className="text-[11px] text-muted-foreground/70 px-2 mb-1.5 tracking-wide uppercase">最近 · {filteredRecent.length}</p>
+            <div className="space-y-0.5">
+              {orderedApps.map((app, idx) => {
+                const Icon = app.icon;
+                const isHidden = hiddenApps.has(app.id);
+                const isDragging = dragIdx === idx;
+                const isDragOver = dragOverIdx === idx;
+                return (
+                  <div
+                    key={app.id}
+                    draggable
+                    onDragStart={() => handleDragStart(idx)}
+                    onDragOver={(e) => handleDragOver(e, idx)}
+                    onDragEnd={handleDragEnd}
+                    className={`flex items-center gap-3 px-2 py-2 rounded-lg transition-all cursor-grab active:cursor-grabbing select-none
+                      ${isHidden ? 'opacity-40' : ''}
+                      ${isDragging ? 'opacity-50 scale-[0.98]' : ''}
+                      ${isDragOver && !isDragging ? 'border-t-2 border-primary/50' : 'border-t-2 border-transparent'}
+                      hover:bg-accent/40`}
+                  >
+                    <GripVertical size={14} className="text-muted-foreground/30 flex-shrink-0" />
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${app.bg} ${app.color}`}>
+                      <Icon size={17} />
+                    </div>
+                    <span className="text-sm text-foreground flex-1">{app.label}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleAppVisibility(app.id); }}
+                      className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                        isHidden
+                          ? 'text-muted-foreground/40 hover:text-foreground hover:bg-accent'
+                          : 'text-foreground/70 hover:text-foreground hover:bg-accent'
+                      }`}
+                      title={isHidden ? '显示' : '隐藏'}
+                    >
+                      {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Filter pills — segmented-control style, border-less */}
+        {!manageMode && (
+          <div className="flex items-center gap-1 mb-4 overflow-x-auto [&::-webkit-scrollbar]:hidden">
+            {['全部', ...dialogFilterTabs].map(f => (
+              <button
+                key={f}
+                onClick={() => setActiveFilter(f)}
+                className={`px-3 py-1 rounded-full text-[12px] whitespace-nowrap transition-colors ${
+                  activeFilter === f
+                    ? 'bg-foreground/[0.08] text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Lists */}
+        {!manageMode && (hasResults ? (
+          <div className="space-y-8">
+            {/* Recent */}
+            {filteredRecent.length > 0 && (
+              <section>
+                <h2 className="text-[11px] text-muted-foreground/60 mb-2 px-1 tracking-wider uppercase">
+                  最近 · {filteredRecent.length}
+                </h2>
+                <div className="space-y-0.5">
                   {filteredRecent.map((item, i) => {
                     const Icon = item.icon;
                     return (
                       <button
                         key={`r-${i}`}
                         onClick={() => onSelect(item.id)}
-                        className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent/60 transition-colors"
+                        className="w-full flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-accent/40 transition-colors"
                       >
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-accent/40 flex items-center justify-center flex-shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-accent/60 flex items-center justify-center flex-shrink-0">
                           <Icon size={14} className="text-muted-foreground" />
                         </div>
                         <div className="flex-1 min-w-0 text-left">
-                          <span className="text-sm text-foreground truncate block">{item.label}</span>
-                          <span className="text-[11px] text-muted-foreground/60 truncate block">{item.desc}</span>
+                          <span className="text-[13px] text-foreground truncate block">{item.label}</span>
+                          <span className="text-[11px] text-muted-foreground/60 truncate block mt-0.5">{item.desc}</span>
                         </div>
-                        <div className="flex items-center gap-1 text-[11px] text-muted-foreground/50 flex-shrink-0">
+                        <div className="flex items-center gap-1 text-[11px] text-muted-foreground/40 flex-shrink-0">
                           <MessageCircle size={10} />
                           <span>{item.count}</span>
                         </div>
@@ -215,88 +235,82 @@ export function NewTabPage({ onSelect, hiddenApps, setHiddenApps, appOrder, setA
                     );
                   })}
                 </div>
-              )}
+              </section>
+            )}
 
-              {/* Files */}
-              {filteredFiles.length > 0 && (
-                <div className="px-2 pt-2 pb-1">
-                  <p className="text-[11px] text-muted-foreground/70 px-2 mb-1.5 tracking-wide uppercase">文件 · {filteredFiles.length}</p>
+            {/* Files */}
+            {filteredFiles.length > 0 && (
+              <section>
+                <h2 className="text-[11px] text-muted-foreground/60 mb-2 px-1 tracking-wider uppercase">
+                  文件 · {filteredFiles.length}
+                </h2>
+                <div className="space-y-0.5">
                   {filteredFiles.map((item, i) => {
                     const Icon = item.icon;
                     return (
                       <button
                         key={`f-${i}`}
                         onClick={() => onSelect(item.id)}
-                        className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent/60 transition-colors"
+                        className="w-full flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-accent/40 transition-colors"
                       >
-                        <div className="w-8 h-8 rounded-lg bg-accent/80 flex items-center justify-center flex-shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-accent/60 flex items-center justify-center flex-shrink-0">
                           <Icon size={14} className="text-muted-foreground" />
                         </div>
                         <div className="flex-1 min-w-0 text-left">
-                          <span className="text-sm text-foreground truncate block">
-                            {item.label} <span className="text-muted-foreground">· {item.desc}</span>
+                          <span className="text-[13px] text-foreground truncate block">
+                            {item.label} <span className="text-muted-foreground/70">· {item.desc}</span>
                           </span>
-                          <span className="text-[11px] text-muted-foreground/60 truncate block">{item.meta}</span>
+                          <span className="text-[11px] text-muted-foreground/60 truncate block mt-0.5">{item.meta}</span>
                         </div>
                       </button>
                     );
                   })}
                 </div>
-              )}
+              </section>
+            )}
 
-              {/* Quick Actions */}
-              {filteredActions.length > 0 && (
-                <div className="px-2 pt-2 pb-2">
-                  <p className="text-[11px] text-muted-foreground/70 px-2 mb-1.5 tracking-wide uppercase">快捷操作</p>
+            {/* Quick Actions */}
+            {filteredActions.length > 0 && (
+              <section>
+                <h2 className="text-[11px] text-muted-foreground/60 mb-2 px-1 tracking-wider uppercase">
+                  快捷操作
+                </h2>
+                <div className="space-y-0.5">
                   {filteredActions.map((item, i) => {
                     const Icon = item.icon;
                     return (
                       <button
                         key={`a-${i}`}
                         onClick={() => onSelect(item.id)}
-                        className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent/60 transition-colors"
+                        className="w-full flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-accent/40 transition-colors"
                       >
-                        <div className="w-8 h-8 rounded-lg bg-accent/80 flex items-center justify-center flex-shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-accent/60 flex items-center justify-center flex-shrink-0">
                           <Icon size={14} className="text-muted-foreground" />
                         </div>
-                        <span className="text-sm text-foreground flex-1 text-left">{item.label}</span>
-                        <kbd className="text-[11px] text-muted-foreground/50 bg-accent/60 px-1.5 py-0.5 rounded">{item.shortcut}</kbd>
+                        <span className="text-[13px] text-foreground flex-1 text-left">{item.label}</span>
+                        <kbd className="text-[11px] text-muted-foreground/50 bg-accent/60 px-1.5 py-0.5 rounded flex-shrink-0">{item.shortcut}</kbd>
                       </button>
                     );
                   })}
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-14 px-4">
-              <Search size={36} className="text-muted-foreground/20 mb-3" />
-              <p className="text-sm text-foreground mb-1">未找到匹配结果</p>
-              <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                未能找到与搜索匹配的内容。<br />请尝试调整关键词、筛选条件或检查是否有拼写错误。
-              </p>
-              <button
-                onClick={() => { setSearch(''); setActiveFilter('全部'); }}
-                className="mt-4 px-4 py-1.5 text-xs border border-border rounded-lg text-foreground hover:bg-accent transition-colors"
-              >
-                清除筛选
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Bottom bar */}
-        <div className="flex items-center gap-3 px-4 py-2 border-t border-border/50 text-[11px] text-muted-foreground/50">
-          <span className="flex items-center gap-1"><kbd className="bg-accent/60 px-1 rounded">↑↓</kbd> 选择</span>
-          <span className="flex items-center gap-1"><kbd className="bg-accent/60 px-1 rounded">↵</kbd> 打开</span>
-          <span className="flex items-center gap-1"><kbd className="bg-accent/60 px-1 rounded">⌘L</kbd> 复制链接</span>
-          <button
-            onClick={() => setManageMode(!manageMode)}
-            className={`ml-auto p-1 rounded transition-colors ${manageMode ? 'text-foreground bg-accent' : 'hover:text-muted-foreground'}`}
-            title="管理快捷应用"
-          >
-            <Settings size={12} />
-          </button>
-        </div>
+              </section>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-16 px-4">
+            <Search size={36} className="text-muted-foreground/20 mb-3" />
+            <p className="text-sm text-foreground mb-1">未找到匹配结果</p>
+            <p className="text-xs text-muted-foreground text-center leading-relaxed">
+              未能找到与搜索匹配的内容。<br />请尝试调整关键词或筛选条件。
+            </p>
+            <button
+              onClick={() => { setSearch(''); setActiveFilter('全部'); }}
+              className="mt-4 px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-lg transition-colors"
+            >
+              清除筛选
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );

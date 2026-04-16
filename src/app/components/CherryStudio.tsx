@@ -63,8 +63,6 @@ function CherryStudioInner() {
     const tab = tabs.find(t => t.id === activeTabId);
     if (tab?.menuItemId) {
       setActiveItem(tab.menuItemId);
-    } else if (tab?.id === 'home') {
-      setActiveItem('');
     }
   }, [activeTabId, tabs]);
 
@@ -150,7 +148,6 @@ function CherryStudioInner() {
 
     const isReplaceable = !!activeTab
       && !activeTab.pinned
-      && activeTab.id !== 'home'
       && !activeTab.miniAppId
       && !!activeTab.menuItemId;
 
@@ -215,8 +212,7 @@ function CherryStudioInner() {
   // opened a new tab.
   const requestOpenTopic = useCallback((topicId: string, title?: string) => {
     const activeTab = tabs.find(t => t.id === activeTabId);
-    const isProtected = !!activeTab
-      && (activeTab.pinned || activeTab.id === 'home' || !!activeTab.miniAppId);
+    const isProtected = !!activeTab && (activeTab.pinned || !!activeTab.miniAppId);
     if (isProtected) {
       openTopicInNewChatTab(topicId, title);
       return true;
@@ -226,8 +222,7 @@ function CherryStudioInner() {
 
   const requestOpenSession = useCallback((sessionId: string, title?: string) => {
     const activeTab = tabs.find(t => t.id === activeTabId);
-    const isProtected = !!activeTab
-      && (activeTab.pinned || activeTab.id === 'home' || !!activeTab.miniAppId);
+    const isProtected = !!activeTab && (activeTab.pinned || !!activeTab.miniAppId);
     if (isProtected) {
       openSessionInNewAgentTab(sessionId, title);
       return true;
@@ -307,7 +302,7 @@ function CherryStudioInner() {
 
             <div className={`flex-1 flex flex-col min-w-0 pr-2 pb-2 ${getLayout(sidebarWidth) === 'hidden' ? 'pl-2' : ''}`}>
               <div className="flex-1 bg-background rounded-xl overflow-hidden flex flex-col min-h-0 relative">
-                <MainContent tabs={tabs} activeTabId={activeTabId || 'home'} />
+                <MainContent tabs={tabs} activeTabId={activeTabId} />
               </div>
             </div>
           </div>

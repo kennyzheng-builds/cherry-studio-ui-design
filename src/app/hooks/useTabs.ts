@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import React from 'react';
 import {
   MessageCircle, Palette, Languages,
-  Home, Puzzle, MousePointerClick, Sparkles,
+  Puzzle, MousePointerClick, Sparkles,
 } from 'lucide-react';
 import type { Tab, MenuItem } from '@/app/types';
 import { menuItems, MULTI_INSTANCE_ITEMS } from '@/app/config/constants';
@@ -24,14 +24,13 @@ interface SerializableTab extends Omit<Tab, 'icon'> {
 /** Map of menuItemId -> icon for icon reconstruction */
 const ICON_MAP: Record<string, React.ElementType> = {};
 menuItems.forEach(m => { ICON_MAP[m.id] = m.icon; });
-ICON_MAP['home'] = Home;
 ICON_MAP['miniapp-fallback'] = Puzzle;
 ICON_MAP[NEW_TAB_MENU_ID] = Sparkles;
 
 function serializeTabs(tabs: Tab[]): string {
   const serializable: SerializableTab[] = tabs.map(({ icon, ...rest }) => ({
     ...rest,
-    iconKey: rest.id === 'home' ? 'home' : rest.menuItemId || (rest.miniAppId ? 'miniapp-fallback' : 'chat'),
+    iconKey: rest.menuItemId || (rest.miniAppId ? 'miniapp-fallback' : 'chat'),
   }));
   return JSON.stringify(serializable);
 }
@@ -40,7 +39,10 @@ function deserializeTabs(json: string): Tab[] | null {
   try {
     const parsed: SerializableTab[] = JSON.parse(json);
     if (!Array.isArray(parsed) || parsed.length === 0) return null;
-    return parsed.map(({ iconKey, ...rest }) => ({
+    // Drop any legacy 'home' tab persisted from earlier versions
+    const filtered = parsed.filter(t => t.id !== 'home');
+    if (filtered.length === 0) return null;
+    return filtered.map(({ iconKey, ...rest }) => ({
       ...rest,
       icon: ICON_MAP[iconKey || 'chat'] || MessageCircle,
     }));
@@ -50,7 +52,6 @@ function deserializeTabs(json: string): Tab[] | null {
 }
 
 const DEFAULT_TABS: Tab[] = [
-  { id: 'home', title: '首页', icon: Home, closeable: false },
   { id: 'p1', title: '聊天', icon: MessageCircle, closeable: true, pinned: true, menuItemId: 'chat' },
   { id: 'p2', title: '聊天', icon: MessageCircle, closeable: true, pinned: true, menuItemId: 'chat' },
   { id: 'p3', title: '聊天', icon: MessageCircle, closeable: true, pinned: true, menuItemId: 'chat' },
@@ -75,7 +76,7 @@ function loadTabs(): Tab[] {
 function loadActiveTabId(): string {
   try {
     const id = localStorage.getItem(STORAGE_KEY_ACTIVE);
-    if (id) return id;
+    if (id && id !== 'home') return id;
   } catch { /* ignore */ }
   return 'p1';
 }

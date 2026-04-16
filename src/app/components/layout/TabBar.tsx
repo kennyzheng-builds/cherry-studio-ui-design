@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Plus, X, Home,
+  Plus, X,
 } from 'lucide-react';
 import { Tooltip } from '@/app/components/Tooltip';
 import type { Tab } from '@/app/types';
@@ -24,9 +24,8 @@ export function TabBar({
   onNewTab,
   startTabDrag,
 }: TabBarProps) {
-  const homeTab = tabs.find(t => t.id === 'home')!;
-  const pinnedTabs = tabs.filter(t => t.pinned && t.id !== 'home' && !t.sidebarDocked);
-  const unpinnedTabs = tabs.filter(t => !t.pinned && t.id !== 'home' && !t.sidebarDocked);
+  const pinnedTabs = tabs.filter(t => t.pinned && !t.sidebarDocked);
+  const unpinnedTabs = tabs.filter(t => !t.pinned && !t.sidebarDocked);
 
   return (
     <div className="h-11 bg-sidebar flex items-center select-none flex-shrink-0">
@@ -39,26 +38,6 @@ export function TabBar({
 
       {/* Tabs area */}
       <div className="flex-1 flex items-center gap-0.5 overflow-x-auto [&::-webkit-scrollbar]:hidden min-w-0 px-1">
-        {/* Home tab — always first, standalone icon */}
-        <Tooltip content={homeTab.title} side="bottom">
-          <div
-            onClick={() => onTabClick(homeTab.id)}
-            onContextMenu={(e) => onTabContext(e, homeTab.id)}
-            className={`w-8 h-8 rounded-md flex items-center justify-center cursor-pointer transition-all duration-150 flex-shrink-0
-              ${activeTabId === homeTab.id
-                ? 'bg-sidebar-accent text-sidebar-foreground'
-                : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'
-              }`}
-          >
-            <Home size={14} strokeWidth={1.6} />
-          </div>
-        </Tooltip>
-
-        {/* Separator after home if there are pinned tabs */}
-        {pinnedTabs.length > 0 && (
-          <div className="w-px h-4 bg-border/50 mx-0.5 flex-shrink-0" />
-        )}
-
         {/* Pinned tabs — grouped in a shared rounded container */}
         {pinnedTabs.length > 0 && (
           <div className="flex items-center bg-sidebar-accent/50 rounded-lg p-0.5 gap-0 flex-shrink-0">
