@@ -6,6 +6,7 @@ import {
   Search, Globe, Package, Code2,
   Settings, Rocket,
   Brain, Pencil, Eye, Play, Trash2, FolderOpen,
+  FileCode, FileText, FileJson, File, Image as ImageIcon,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { shakeAnimation } from '@/app/config/animations';
@@ -14,6 +15,89 @@ import { GenUIButtons, GenUISelection, GenUIConfirmation } from './GenerativeUI'
 
 // Re-export for backward compatibility
 export type ChatMessage = AgentChatMessage;
+
+// ===========================
+// File Mention Chip + Parser
+// ===========================
+// Detects filenames with known extensions inline in message text and renders them
+// as clickable chips that open the file in the WorkPane. Supports:
+//   - Backtick-wrapped paths: `src/App.tsx`
+//   - Bare tokens with a recognized extension: report.md
+// Non-file backticks and code are rendered as inline code, preserving existing formatting.
+
+const FILE_EXT_GROUP =
+  'md|txt|tsx?|jsx?|json|ya?ml|css|scss|html?|py|go|rs|java|kt|swift|rb|php|sh|toml|ini|env|svg|png|jpe?g|gif|ico|pdf|docx?|pptx?|xlsx?|csv';
+
+// One unified regex so we iterate the string in order and alternate text/chip.
+// Group 1: backticked segment (full body captured in group 2)
+// Group 3: bare file token
+const MENTION_RE = new RegExp(
+  '`([^`\\n]+)`|(\\b[\\w./-]+\\.(?:' + FILE_EXT_GROUP + ')\\b)',
+  'gi'
+);
+
+function chipIconFor(name: string, size = 9) {
+  const cls = 'flex-shrink-0';
+  if (name.endsWith('.json')) return <FileJson size={size} className={cls} />;
+  if (/\.(tsx?|jsx?|css|scss|html?|py|go|rs|java|kt|swift|rb|php|sh)$/i.test(name))
+    return <FileCode size={size} className={cls} />;
+  if (/\.(svg|png|jpe?g|gif|ico)$/i.test(name)) return <ImageIcon size={size} className={cls} />;
+  if (/\.(md|txt|pdf|docx?|pptx?|xlsx?|csv|ya?ml|toml|ini|env)$/i.test(name))
+    return <FileText size={size} className={cls} />;
+  return <File size={size} className={cls} />;
+}
+
+function FileMentionChip({ path, onClick }: { path: string; onClick: () => void }) {
+  const name = path.split('/').pop() || path;
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className="inline-flex items-baseline gap-1 px-1.5 py-[1px] mx-[1px] rounded-[4px] bg-cherry-active-bg/50 hover:bg-cherry-active-bg text-cherry-primary-dark hover:text-cherry-primary text-[10px] font-mono align-baseline transition-colors cursor-pointer"
+      title={path}
+    >
+      <span className="translate-y-[1px]">{chipIconFor(name)}</span>
+      <span>{name}</span>
+    </button>
+  );
+}
+
+function looksLikeFile(token: string): boolean {
+  // Must contain a dot-extension, no whitespace, reasonable length
+  if (!token || token.length > 120) return false;
+  if (/\s/.test(token)) return false;
+  return /\.[a-z0-9]+$/i.test(token);
+}
+
+/**
+ * Split message text into plain text and clickable file-mention chips.
+ * If no onOpenFile handler provided, returns the original string verbatim.
+ */
+function renderWithMentions(text: string, onOpenFile?: (key: string) => void): React.ReactNode {
+  if (!text) return text;
+  if (!onOpenFile) return text;
+
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  let m: RegExpExecArray | null;
+  MENTION_RE.lastIndex = 0;
+
+  while ((m = MENTION_RE.exec(text)) !== null) {
+    const [full, backtickBody, bareToken] = m;
+    const candidate = (backtickBody ?? bareToken ?? '').trim();
+    if (!looksLikeFile(candidate)) continue;
+
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(
+      <FileMentionChip key={`fm-${key++}`} path={candidate} onClick={() => onOpenFile(candidate)} />
+    );
+    last = m.index + full.length;
+  }
+
+  if (parts.length === 0) return text;
+  if (last < text.length) parts.push(text.slice(last));
+  return <>{parts}</>;
+}
 
 // ===========================
 // Collapsible Message Row (task-style)
@@ -102,7 +186,7 @@ function resolveToolIcon(name: string, size = 11): React.ReactNode {
 // User Message
 // ===========================
 
-export function UserMessage({ msg }: { msg: ChatMessage }) {
+export function UserMessage({ msg, onOpenFile }: { msg: ChatMessage; onOpenFile?: (key: string) => void }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 4 }}
@@ -111,7 +195,7 @@ export function UserMessage({ msg }: { msg: ChatMessage }) {
       className="flex justify-end"
     >
       <div className="max-w-[85%] px-3.5 py-2.5 rounded-[14px] rounded-br-[4px] bg-foreground text-background text-[11px] leading-[1.65]">
-        {msg.content}
+        {renderWithMentions(msg.content ?? '', onOpenFile)}
       </div>
     </motion.div>
   );
@@ -121,10 +205,11 @@ export function UserMessage({ msg }: { msg: ChatMessage }) {
 // Agent Message Group
 // ===========================
 
-export function AgentMessageGroup({ msgs, onResolve, onAvatarClick }: {
+export function AgentMessageGroup({ msgs, onResolve, onAvatarClick, onOpenFile }: {
   msgs: ChatMessage[];
   onResolve: (msgId: string, value: string) => void;
   onAvatarClick?: () => void;
+  onOpenFile?: (key: string) => void;
 }) {
   return (
     <div className="flex gap-2 max-w-[95%]">
@@ -146,7 +231,9 @@ export function AgentMessageGroup({ msgs, onResolve, onAvatarClick }: {
                 }
                 label="思考中..."
               >
-                <p className="text-[10px] text-muted-foreground/70 leading-[1.7]">{msg.thinking}</p>
+                <p className="text-[10px] text-muted-foreground/70 leading-[1.7]">
+                  {renderWithMentions(msg.thinking, onOpenFile)}
+                </p>
               </CollapsibleRow>
             )}
 
@@ -182,7 +269,7 @@ export function AgentMessageGroup({ msgs, onResolve, onAvatarClick }: {
                 transition={{ duration: 0.15 }}
                 className="text-[11px] text-foreground/90 leading-[1.7] py-1 px-1"
               >
-                {msg.content}
+                {renderWithMentions(msg.content, onOpenFile)}
               </motion.div>
             )}
 

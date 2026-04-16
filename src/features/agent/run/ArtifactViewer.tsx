@@ -1,34 +1,70 @@
 import React, { useState, useMemo } from 'react';
 import {
-  Monitor, Code2, RotateCw, ExternalLink, Smartphone, Tablet,
-  Copy, Check, ChevronDown, ChevronRight, Eye,
-  PanelLeftClose, PanelLeftOpen, X,
-  Maximize2, Minimize2,
+  Monitor, Code2, Eye, X,
+  Maximize2, Minimize2, List,
+  FileCode, FileJson, FileText, File, Image as ImageIcon,
+  Settings,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { copyToClipboard } from '@/app/utils/clipboard';
 import { Tooltip } from '@/app/components/Tooltip';
+import { FileIndexPanel } from './FileIndexPanel';
+import type { FileNode, OutputFile } from '@/app/types/agent';
 
 // ===========================
 // Types
 // ===========================
 
 interface Props {
+  // Multi-file tab state
+  openedFiles: string[];
+  activeFile: string | null;
+  onSelectFile: (key: string) => void;
+  onCloseFile: (key: string) => void;
+  onOpenFile: (key: string) => void;
+
+  // Content resolution
   fileContent: string | null;
-  fileName: string | null;
+  getFileLabel: (key: string) => string;
+
+  // File index popover data
+  allFiles: FileNode[];
+  outputFiles: OutputFile[];
+  importedFiles?: Array<{ path: string; name: string }>;
+
+  // Session-level preview (iframe)
   previewUrl: string | null;
-  hasArtifact: boolean;
   previewHtml?: string;
-  showExplorer?: boolean;
-  onToggleExplorer?: () => void;
-  showPreview?: boolean;
-  onTogglePreview?: () => void;
+  hasArtifact: boolean;
+
+  // Panel actions
+  onClosePanel?: () => void;
   maximized?: boolean;
   onToggleMaximize?: () => void;
 }
 
-type ViewTab = 'preview' | 'code';
-type DeviceFrame = 'desktop' | 'tablet' | 'mobile';
+type ViewMode = 'preview' | 'code';
+
+// ===========================
+// File Icon Resolver
+// ===========================
+
+function getFileIcon(key: string, size = 10) {
+  if (key.startsWith('output:')) {
+    // Use a generic icon for output files in tab
+    return <FileText size={size} className="text-cherry-primary/70 flex-shrink-0" />;
+  }
+  const name = key.split('/').pop() || key;
+  const cls = 'text-muted-foreground/70 flex-shrink-0';
+  if (name.endsWith('.json')) return <FileJson size={size} className={cls} />;
+  if (name.endsWith('.tsx') || name.endsWith('.ts')) return <FileCode size={size} className={cls} />;
+  if (name.endsWith('.jsx') || name.endsWith('.js')) return <FileCode size={size} className={cls} />;
+  if (name.endsWith('.css') || name.endsWith('.scss')) return <FileCode size={size} className={cls} />;
+  if (name.endsWith('.html')) return <FileCode size={size} className={cls} />;
+  if (name.endsWith('.md')) return <FileText size={size} className={cls} />;
+  if (name.endsWith('.svg') || name.endsWith('.png') || name.endsWith('.ico')) return <ImageIcon size={size} className={cls} />;
+  if (name === '.gitignore' || name === '.env') return <Settings size={size} className={cls} />;
+  return <File size={size} className={cls} />;
+}
 
 // ===========================
 // Syntax Highlighter (Light theme)
@@ -44,18 +80,17 @@ const KEYWORDS = new Set([
 
 const LITERALS = new Set(['true', 'false', 'null', 'undefined', 'NaN', 'Infinity']);
 
-// Build regex patterns using new RegExp() to avoid regex literal compliance issues
-const BT = String.fromCharCode(96); // backtick
+const BT = String.fromCharCode(96);
 const TOKEN_PATTERN = new RegExp(
   '(' +
-  '\\/\\/.*' +                              // line comments
-  '|' + String.fromCharCode(39) + '[^' + String.fromCharCode(39) + ']*' + String.fromCharCode(39) +  // single-quoted strings
-  '|"[^"]*"' +                              // double-quoted strings
-  '|' + BT + '[^' + BT + ']*' + BT +        // template strings
-  '|\\b\\d+(?:\\.\\d+)?\\b' +               // numbers
-  '|[a-zA-Z_$][a-zA-Z0-9_$]*' +             // identifiers
-  '|[{}()\\[\\];,.:=<>+\\-*/!&|?@#~^%]+' +  // punctuation
-  '|\\s+' +                                  // whitespace
+  '\\/\\/.*' +
+  '|' + String.fromCharCode(39) + '[^' + String.fromCharCode(39) + ']*' + String.fromCharCode(39) +
+  '|"[^"]*"' +
+  '|' + BT + '[^' + BT + ']*' + BT +
+  '|\\b\\d+(?:\\.\\d+)?\\b' +
+  '|[a-zA-Z_$][a-zA-Z0-9_$]*' +
+  '|[{}()\\[\\];,.:=<>+\\-*/!&|?@#~^%]+' +
+  '|\\s+' +
   ')',
   'g'
 );
@@ -71,7 +106,6 @@ function tokenizeLine(line: string): React.ReactNode[] {
   let match;
   let key = 0;
 
-  // Reset lastIndex for global regex
   TOKEN_PATTERN.lastIndex = 0;
 
   while ((match = TOKEN_PATTERN.exec(line)) !== null) {
@@ -123,7 +157,7 @@ function CodeBlock({ code }: { code: string }) {
 // Empty State
 // ===========================
 
-function EmptyState() {
+function EmptyState({ onBrowseFiles }: { onBrowseFiles?: () => void }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -136,9 +170,56 @@ function EmptyState() {
       </div>
       <p className="text-[12px] text-muted-foreground mb-1">{"准备就绪"}</p>
       <p className="text-[10px] text-muted-foreground/55 max-w-[260px] text-center leading-[1.6]">
-        {"开始与智能体对话，生成的代码和实时预览将在此处显示。"}
+        {"点击聊天中的文件或产出物查看预览，也可以从左上角浏览全部文件。"}
       </p>
+      {onBrowseFiles && (
+        <button
+          onClick={onBrowseFiles}
+          className="mt-3 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] text-foreground/70 hover:text-foreground bg-accent/20 hover:bg-accent/30 transition-colors"
+        >
+          <FolderSearch size={10} />
+          浏览文件
+        </button>
+      )}
     </motion.div>
+  );
+}
+
+// ===========================
+// File Tab
+// ===========================
+
+function FileTab({
+  fileKey, label, isActive, onSelect, onClose,
+}: {
+  fileKey: string;
+  label: string;
+  isActive: boolean;
+  onSelect: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      onClick={onSelect}
+      className={`group flex items-center gap-1.5 pl-2 pr-1 py-[4px] rounded-md text-[10px] cursor-pointer transition-all duration-75 max-w-[160px] flex-shrink-0 ${
+        isActive
+          ? 'bg-background text-foreground shadow-sm shadow-black/5'
+          : 'text-muted-foreground/70 hover:text-foreground hover:bg-accent/15'
+      }`}
+    >
+      {getFileIcon(fileKey)}
+      <span className="truncate flex-1 min-w-0">{label}</span>
+      <button
+        onClick={e => { e.stopPropagation(); onClose(); }}
+        className={`p-[1px] rounded transition-all flex-shrink-0 ${
+          isActive
+            ? 'text-muted-foreground/55 hover:text-foreground hover:bg-accent/30'
+            : 'opacity-0 group-hover:opacity-100 text-muted-foreground/55 hover:text-foreground hover:bg-accent/30'
+        }`}
+      >
+        <X size={9} />
+      </button>
+    </div>
   );
 }
 
@@ -146,139 +227,146 @@ function EmptyState() {
 // Artifact Viewer
 // ===========================
 
-export function ArtifactViewer({ fileContent, fileName, previewUrl, hasArtifact, previewHtml, showExplorer, onToggleExplorer, showPreview, onTogglePreview, maximized, onToggleMaximize }: Props) {
-  const [activeTab, setActiveTab] = useState<ViewTab>('preview');
-  const [device, setDevice] = useState<DeviceFrame>('desktop');
-  const [copied, setCopied] = useState(false);
-  const [previewKey, setPreviewKey] = useState(0);
-  const [previewCollapsed, setPreviewCollapsed] = useState(false);
+export function ArtifactViewer({
+  openedFiles, activeFile, onSelectFile, onCloseFile, onOpenFile,
+  fileContent, getFileLabel,
+  allFiles, outputFiles, importedFiles,
+  previewUrl: _previewUrl, previewHtml, hasArtifact,
+  onClosePanel, maximized, onToggleMaximize,
+}: Props) {
+  const [viewMode, setViewMode] = useState<ViewMode>('preview');
+  const [fileColOpen, setFileColOpen] = useState(false);
 
-  const handleCopy = () => {
-    if (fileContent) {
-      copyToClipboard(fileContent);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }
-  };
-
-  const deviceWidth = device === 'mobile' ? 375 : device === 'tablet' ? 768 : '100%';
+  const openedSet = useMemo(() => new Set(openedFiles), [openedFiles]);
+  const showContentArea = hasArtifact || !!activeFile;
 
   return (
     <div className="flex flex-col h-full">
-      {/* Tab Bar — always visible */}
-      <div className="flex items-center justify-between px-2.5 flex-shrink-0 h-[36px]">
-        <div className="flex items-center gap-1.5">
-          {/* File tree toggle - left side */}
-          {onToggleExplorer && (
-            <Tooltip content="文件树" side="bottom"><button onClick={onToggleExplorer}
-              className={`p-1 rounded transition-colors ${showExplorer ? 'text-foreground/80 bg-accent/25' : 'text-muted-foreground hover:text-foreground/70'}`}>
-              {showExplorer ? <PanelLeftClose size={11} /> : <PanelLeftOpen size={11} />}
-            </button></Tooltip>
+      {/* ===== Top Bar: File Index Toggle + File Tabs + Controls ===== */}
+      <div className="flex items-stretch px-1.5 flex-shrink-0 h-[36px] gap-0.5">
+        {/* Inline file column toggle (Cursor-style: Browse Files) */}
+        <Tooltip content={fileColOpen ? '收起文件列表' : '浏览文件'} side="bottom">
+          <button
+            onClick={() => setFileColOpen(v => !v)}
+            className={`flex items-center justify-center px-1.5 rounded transition-colors flex-shrink-0 ${
+              fileColOpen
+                ? 'text-foreground bg-accent/30'
+                : 'text-muted-foreground hover:text-foreground/80 hover:bg-accent/15'
+            }`}
+          >
+            <List size={12} />
+          </button>
+        </Tooltip>
+
+        <div className="w-px my-2 bg-border/25 flex-shrink-0" />
+
+        {/* File tabs (scrollable if overflow) */}
+        <div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto bg-accent/20 rounded-lg p-[3px] [&::-webkit-scrollbar]:h-[3px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border/25 [&::-webkit-scrollbar-thumb]:rounded-full">
+          {openedFiles.length === 0 ? (
+            <span className="text-[10px] text-muted-foreground/40 px-2 py-1">
+              暂无打开的文件
+            </span>
+          ) : (
+            openedFiles.map(key => (
+              <FileTab
+                key={key}
+                fileKey={key}
+                label={getFileLabel(key)}
+                isActive={activeFile === key}
+                onSelect={() => onSelectFile(key)}
+                onClose={() => onCloseFile(key)}
+              />
+            ))
           )}
-
-          <div className="inline-flex items-center bg-accent/20 rounded-lg p-[3px]">
-            {/* Preview Tab */}
-            <button
-              onClick={() => setActiveTab('preview')}
-              className={`flex items-center gap-1.5 px-2.5 py-[4px] rounded-md text-[10px] transition-all duration-150 ${
-                activeTab === 'preview'
-                  ? 'bg-background text-foreground shadow-sm shadow-black/5'
-                  : 'text-muted-foreground/60 hover:text-muted-foreground'
-              }`}
-            >
-              <Eye size={10} />
-              {"预览"}
-            </button>
-
-            {/* Code Tab */}
-            <button
-              onClick={() => setActiveTab('code')}
-              className={`flex items-center gap-1.5 px-2.5 py-[4px] rounded-md text-[10px] transition-all duration-150 ${
-                activeTab === 'code'
-                  ? 'bg-background text-foreground shadow-sm shadow-black/5'
-                  : 'text-muted-foreground/60 hover:text-muted-foreground'
-              }`}
-            >
-              <Code2 size={10} />
-              {"代码"}
-              {fileName && (
-                <span className="text-[9px] text-muted-foreground/50 ml-0.5 max-w-[100px] truncate">
-                  {fileName.split('/').pop()}
-                </span>
-              )}
-            </button>
-          </div>
         </div>
 
-        {/* Right controls */}
-        <div className="flex items-center gap-0.5">
-          {activeTab === 'preview' && (
-            <div className="contents">
-              {/* Device selectors */}
-              <Tooltip content="桌面" side="bottom"><button onClick={() => setDevice('desktop')}
-                className={`p-1 rounded transition-colors ${device === 'desktop' ? 'text-foreground/80 bg-accent/25' : 'text-muted-foreground hover:text-foreground/70'}`}>
-                <Monitor size={10} />
-              </button></Tooltip>
-              <Tooltip content="平板" side="bottom"><button onClick={() => setDevice('tablet')}
-                className={`p-1 rounded transition-colors ${device === 'tablet' ? 'text-foreground/80 bg-accent/25' : 'text-muted-foreground hover:text-foreground/70'}`}>
-                <Tablet size={10} />
-              </button></Tooltip>
-              <Tooltip content="手机" side="bottom"><button onClick={() => setDevice('mobile')}
-                className={`p-1 rounded transition-colors ${device === 'mobile' ? 'text-foreground/80 bg-accent/25' : 'text-muted-foreground hover:text-foreground/70'}`}>
-                <Smartphone size={10} />
-              </button></Tooltip>
+        <div className="w-px my-2 bg-border/25 flex-shrink-0" />
 
-              <div className="w-px h-3 bg-border/25 mx-1" />
-
-              <Tooltip content="刷新" side="bottom"><button onClick={() => setPreviewKey(k => k + 1)}
-                className="p-1 rounded text-muted-foreground hover:text-foreground/70 transition-colors">
-                <RotateCw size={10} />
-              </button></Tooltip>
-              <Tooltip content="新窗口打开" side="bottom"><button className="p-1 rounded text-muted-foreground hover:text-foreground/70 transition-colors">
-                <ExternalLink size={10} />
-              </button></Tooltip>
+        {/* Right controls — icon-only view toggle + maximize + close */}
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          {/* Preview / Code icon toggle */}
+          {showContentArea && (
+            <div className="inline-flex items-center bg-accent/15 rounded-md p-[2px] mr-0.5">
+              <Tooltip content="预览" side="bottom">
+                <button
+                  onClick={() => setViewMode('preview')}
+                  className={`flex items-center justify-center w-[22px] h-[20px] rounded transition-all duration-150 ${
+                    viewMode === 'preview'
+                      ? 'bg-background text-foreground shadow-sm shadow-black/5'
+                      : 'text-muted-foreground/60 hover:text-muted-foreground'
+                  }`}
+                >
+                  <Eye size={11} />
+                </button>
+              </Tooltip>
+              <Tooltip content="源码" side="bottom">
+                <button
+                  onClick={() => setViewMode('code')}
+                  className={`flex items-center justify-center w-[22px] h-[20px] rounded transition-all duration-150 ${
+                    viewMode === 'code'
+                      ? 'bg-background text-foreground shadow-sm shadow-black/5'
+                      : 'text-muted-foreground/60 hover:text-muted-foreground'
+                  }`}
+                >
+                  <Code2 size={11} />
+                </button>
+              </Tooltip>
             </div>
           )}
 
-          {activeTab === 'code' && fileContent && (
-            <button onClick={handleCopy}
-              className="flex items-center gap-1 px-2 py-1 rounded text-[9px] text-muted-foreground hover:text-foreground/80 hover:bg-accent/15 transition-colors">
-              {copied ? <Check size={9} className="text-cherry-primary-dark" /> : <Copy size={9} />}
-              {copied ? '已复制' : '复制'}
-            </button>
-          )}
-
-          {/* Maximize toggle */}
           {onToggleMaximize && (
-            <div>
-              <div className="w-px h-3 bg-border/25 mx-1 inline-block align-middle" />
-              <Tooltip content={maximized ? '退出最大化' : '最大化'} side="bottom"><button onClick={onToggleMaximize}
+            <Tooltip content={maximized ? '退出最大化' : '最大化'} side="bottom">
+              <button onClick={onToggleMaximize}
                 className={`p-1 rounded transition-colors ${maximized ? 'text-foreground/80 bg-accent/25' : 'text-muted-foreground hover:text-foreground/70'}`}>
-                {maximized ? <Minimize2 size={10} /> : <Maximize2 size={10} />}
-              </button></Tooltip>
-            </div>
+                {maximized ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+              </button>
+            </Tooltip>
           )}
 
-          {/* Close preview panel */}
-          {onTogglePreview && (
-            <div>
-              <div className="w-px h-3 bg-border/25 mx-1 inline-block align-middle" />
-              <Tooltip content="关闭预览" side="bottom"><button onClick={onTogglePreview}
+          {onClosePanel && (
+            <Tooltip content="关闭面板" side="bottom">
+              <button onClick={onClosePanel}
                 className="p-1 rounded text-muted-foreground hover:text-foreground/70 hover:bg-accent/15 transition-colors">
                 <X size={11} />
-              </button></Tooltip>
-            </div>
+              </button>
+            </Tooltip>
           )}
         </div>
       </div>
 
-      {/* Content Area */}
-      <div className="flex-1 min-h-0 relative">
-        {!hasArtifact ? (
-          <EmptyState />
+      {/* ===== Body: Optional File Column + Content Area ===== */}
+      <div className="flex flex-1 min-h-0">
+        {/* Inline file column (Cursor-style) — animates open/closed */}
+        <AnimatePresence initial={false}>
+          {fileColOpen && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 168, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+              className="flex-shrink-0 border-r border-border/25 overflow-hidden"
+            >
+              <div style={{ width: 168 }} className="h-full">
+                <FileIndexPanel
+                  files={allFiles}
+                  outputFiles={outputFiles}
+                  importedFiles={importedFiles}
+                  openedFiles={openedSet}
+                  activeFile={activeFile}
+                  onOpenFile={onOpenFile}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Content area (preview or code) */}
+        <div className="flex-1 min-h-0 min-w-0 relative">
+        {!showContentArea ? (
+          <EmptyState onBrowseFiles={() => setFileColOpen(true)} />
         ) : (
         <AnimatePresence mode="wait">
-          {activeTab === 'preview' ? (
+          {viewMode === 'preview' ? (
             <motion.div
               key="preview"
               initial={{ opacity: 0 }}
@@ -288,13 +376,9 @@ export function ArtifactViewer({ fileContent, fileName, previewUrl, hasArtifact,
               className="h-full flex items-start justify-center bg-accent/8 overflow-auto p-0"
             >
               {previewHtml ? (
-                <div className="h-full w-full flex justify-center" style={device !== 'desktop' ? { padding: '16px' } : undefined}>
-                  <div
-                    className={`bg-white h-full overflow-hidden ${device !== 'desktop' ? 'rounded-lg shadow-lg border border-border/25' : 'w-full'}`}
-                    style={device !== 'desktop' ? { width: deviceWidth, maxWidth: '100%' } : undefined}
-                  >
+                <div className="h-full w-full flex justify-center">
+                  <div className="bg-white h-full overflow-hidden w-full">
                     <iframe
-                      key={previewKey}
                       srcDoc={previewHtml}
                       className="w-full h-full border-0"
                       title="预览"
@@ -332,6 +416,7 @@ export function ArtifactViewer({ fileContent, fileName, previewUrl, hasArtifact,
           )}
         </AnimatePresence>
         )}
+        </div>
       </div>
     </div>
   );

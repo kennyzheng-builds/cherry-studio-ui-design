@@ -1,11 +1,10 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useGlobalActions } from '@/app/context/GlobalActionContext';
 import {
-  ArrowLeft, ChevronDown, ChevronRight, FolderOpen, Share2, Download,
+  ArrowLeft, ChevronDown, ChevronRight, FolderOpen,
   Bot, Circle, Columns2,
   Sparkles, Plus, ArrowUp,
   FileText, Zap, Search as SearchIcon, BookOpen, History,
-  MessageCirclePlus,
   Code2, Folder, Tag,
   X,
   Check,
@@ -15,7 +14,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Tooltip } from '@/app/components/Tooltip';
-import { FileExplorer } from './FileExplorer';
 import { ArtifactViewer } from './ArtifactViewer';
 import { EmptyState } from '@/app/components/ui/EmptyState';
 import { ChatPanel } from './ChatPanel';
@@ -26,6 +24,7 @@ import {
   MOCK_SESSIONS, MODELS, SESSION_DATA_MAP, EMPTY_SESSION_DATA,
   DEFAULT_INITIAL_FILES, AGENT_MODEL_CAPABILITY_LABELS,
 } from '@/app/mock';
+import type { FileNode } from '@/app/types/agent';
 
 // Backward-compatible aliases
 type ChatMessage = AgentChatMessage;
@@ -931,11 +930,20 @@ export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void
   const [sessions, setSessions] = useState<AgentSession[]>(MOCK_SESSIONS);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(initialSessionId ?? null);
   const [localMessages, setLocalMessages] = useState<Record<string, ChatMessage[]>>({});
-  const [selectedFile, setSelectedFile] = useState<string | null>(() => {
+
+  // Multi-file tab state (replaces single `selectedFile`)
+  const [openedFiles, setOpenedFiles] = useState<string[]>(() => {
     if (initialSessionId) {
       const data = SESSION_DATA_MAP[initialSessionId];
-      if (data) return Object.keys(data.fileContents)[0] || null;
-      return null;
+      const first = data ? Object.keys(data.fileContents)[0] : null;
+      return first ? [first] : [];
+    }
+    return ['src/App.tsx'];
+  });
+  const [activeFile, setActiveFile] = useState<string | null>(() => {
+    if (initialSessionId) {
+      const data = SESSION_DATA_MAP[initialSessionId];
+      return data ? (Object.keys(data.fileContents)[0] || null) : null;
     }
     return 'src/App.tsx';
   });
@@ -954,7 +962,6 @@ export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void
       return matchProvider && matchSearch && matchCap;
     });
   }, [activeProvider, mdlSearch, mdlCapFilter]);
-  const [showExplorer, setShowExplorer] = useState(!!initialSessionId);
   const [showPreview, setShowPreview] = useState(!!initialSessionId);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState(AVAILABLE_AGENTS[0]);
@@ -977,10 +984,45 @@ export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void
     }
   }, [activeSession, onTabTitleChange]);
 
-  const fileContent = selectedFile ? (sessionData.fileContents[selectedFile] || null) : null;
+  const fileContent = activeFile ? (sessionData.fileContents[activeFile] || null) : null;
 
-  const handleSelectFile = useCallback((path: string) => {
-    setSelectedFile(path);
+  // Resolve a readable label (basename) for a file tab key
+  const getFileLabel = useCallback((key: string): string => {
+    if (key.startsWith('output:')) {
+      const id = key.slice('output:'.length);
+      const out = sessionData.outputFiles.find(f => f.id === id);
+      return out?.name || id;
+    }
+    return key.split('/').pop() || key;
+  }, [sessionData.outputFiles]);
+
+  // Open a file: add to openedFiles if not present, set as active
+  const handleOpenFile = useCallback((key: string) => {
+    setOpenedFiles(prev => prev.includes(key) ? prev : [...prev, key]);
+    setActiveFile(key);
+    setShowPreview(true);
+  }, []);
+
+  // Select an already-open file tab
+  const handleSelectFile = useCallback((key: string) => {
+    setActiveFile(key);
+  }, []);
+
+  // Close a file tab; if it was active, fall back to neighbor
+  const handleCloseFile = useCallback((key: string) => {
+    setOpenedFiles(prev => {
+      const idx = prev.indexOf(key);
+      if (idx === -1) return prev;
+      const next = prev.filter(k => k !== key);
+      // If closed the active tab, pick a neighbor
+      setActiveFile(current => {
+        if (current !== key) return current;
+        if (next.length === 0) return null;
+        const fallbackIdx = Math.min(idx, next.length - 1);
+        return next[fallbackIdx];
+      });
+      return next;
+    });
   }, []);
 
   const handleSelectSession = useCallback((id: string) => {
@@ -992,31 +1034,24 @@ export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void
     setActiveSessionId(id);
     const data = SESSION_DATA_MAP[id];
     if (data) {
-      setSelectedFile(null);
-      setShowPreview(true);
-      setShowExplorer(true);
       const firstKey = Object.keys(data.fileContents)[0] || null;
-      setSelectedFile(firstKey);
-    } else {
-      setSelectedFile(null);
+      setOpenedFiles(firstKey ? [firstKey] : []);
+      setActiveFile(firstKey);
       setShowPreview(true);
-      setShowExplorer(true);
+    } else {
+      setOpenedFiles([]);
+      setActiveFile(null);
+      setShowPreview(true);
     }
   }, [sessions, requestOpenSession]);
-
-  const handleNewSession = useCallback(() => {
-    setActiveSessionId(null);
-    setShowPreview(false);
-    setShowExplorer(false);
-    setSelectedFile(null);
-  }, []);
 
   const handleDeleteSession = useCallback((id: string) => {
     setSessions(prev => prev.filter(s => s.id !== id));
     if (activeSessionId === id) {
       setActiveSessionId(null);
       setShowPreview(false);
-      setShowExplorer(false);
+      setOpenedFiles([]);
+      setActiveFile(null);
     }
   }, [activeSessionId]);
 
@@ -1270,116 +1305,85 @@ export function AgentRunPage({ onBack, initialSessionId }: { onBack?: () => void
         </div>
 
         <div className="flex items-center gap-0.5">
-          {hasMessages && (
-            <Tooltip content={"\u65b0\u5efa\u4f1a\u8bdd"} side="bottom"><button onClick={handleNewSession}
-              className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/15 transition-colors">
-              <MessageCirclePlus size={13} />
-            </button></Tooltip>
-          )}
-
           {/* History — always visible */}
           <Tooltip content={"\u5386\u53f2\u8bb0\u5f55"} side="bottom"><button onClick={() => setShowHistory(true)}
             className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/15 transition-colors">
             <History size={13} />
           </button></Tooltip>
 
-          {/* Show preview panel — when preview is hidden */}
+          {/* Show work panel — when hidden */}
           {!showPreview && (
             <div className="flex items-center gap-0.5">
               <div className="w-px h-3.5 bg-border/25 mx-0.5" />
-              <Tooltip content={"\u663e\u793a\u9884\u89c8\u9762\u677f"} side="bottom"><button onClick={() => { setShowPreview(true); setShowExplorer(true); }}
+              <Tooltip content={"\u6253\u5f00\u5de5\u4f5c\u9762\u677f"} side="bottom"><button onClick={() => setShowPreview(true)}
                 className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/15 transition-colors">
                 <Columns2 size={12} />
-              </button></Tooltip>
-            </div>
-          )}
-
-          {hasMessages && (
-            <div className="flex items-center gap-0.5">
-              <div className="w-px h-3.5 bg-border/25 mx-0.5" />
-              <Tooltip content={"\u5bfc\u51fa"} side="bottom"><button className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/15 transition-colors">
-                <Download size={11} />
-              </button></Tooltip>
-              <Tooltip content={"\u5206\u4eab"} side="bottom"><button className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/15 transition-colors">
-                <Share2 size={11} />
               </button></Tooltip>
             </div>
           )}
         </div>
       </header>
 
-      {/* ===== Main Content ===== */}
-      <div className="flex flex-1 min-h-0 pl-2">
-        <AnimatePresence initial={false}>
-          {showPreview && (
-            <motion.div
-              initial={{ opacity: 0, marginLeft: -8 }}
-              animate={{ opacity: 1, marginLeft: 0 }}
-              exit={{ opacity: 0, marginLeft: -8 }}
-              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-              className="flex flex-1 min-w-0 my-1.5 mr-1 rounded-2xl border border-border/40 bg-card/50 shadow-sm shadow-black/5 overflow-hidden"
-            >
-              <AnimatePresence initial={false}>
-                {showExplorer && (
-                  <motion.div
-                    initial={{ width: 0, opacity: 0 }}
-                    animate={{ width: 200, opacity: 1 }}
-                    exit={{ width: 0, opacity: 0 }}
-                    transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
-                    className="border-r border-border/25 flex-shrink-0 overflow-hidden"
-                  >
-                    <FileExplorer
-                      files={sessionData.files.length > 0 ? sessionData.files : DEFAULT_INITIAL_FILES}
-                      outputFiles={sessionData.outputFiles}
-                      selectedFile={selectedFile}
-                      onSelectFile={handleSelectFile}
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <div className="flex-1 min-w-0 overflow-hidden">
-                <ArtifactViewer
-                  fileContent={fileContent}
-                  fileName={selectedFile}
-                  previewUrl={null}
-                  hasArtifact={!!sessionData.previewHtml || !!fileContent}
-                  previewHtml={sessionData.previewHtml}
-                  showExplorer={showExplorer}
-                  onToggleExplorer={() => setShowExplorer(!showExplorer)}
-                  showPreview={showPreview}
-                  onTogglePreview={() => setShowPreview(!showPreview)}
-                  maximized={previewMaximized}
-                  onToggleMaximize={() => setPreviewMaximized(!previewMaximized)}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
+      {/* ===== Main Content =====
+          Layout philosophy (Cursor/Canvas-style, lazy right pane):
+          - Default: ChatPanel fills available width (no persistent file tree)
+          - Right WorkPane opens on demand (artifact click, file mention, or top-right button)
+          - WorkPane internally manages multi-file tabs + 📁 file index popover
+          - No per-session "explorer" column; file discovery happens via popover or chat mentions
+      */}
+      <div className="flex flex-1 min-h-0 gap-0">
+        {/* Chat column — occupies remaining width */}
         {!previewMaximized && (
-          !hasMessages ? (
-            <div
-              className={`overflow-hidden ${showPreview ? 'flex-shrink-0' : 'flex-1'}`}
-              style={showPreview ? { width: 330 } : undefined}
-            >
+          <div
+            className="flex-1 min-w-[320px] overflow-hidden"
+          >
+            {!hasMessages ? (
               <NewSessionEmpty onSendMessage={handleSendMessage} />
-            </div>
-          ) : (
-            <div
-              className={`overflow-hidden ${showPreview ? 'flex-shrink-0' : 'flex-1'}`}
-              style={showPreview ? { width: 330 } : undefined}
-            >
+            ) : (
               <ChatPanel
                 messages={messages}
                 steps={sessionData.steps}
                 onSendMessage={handleSendMessage}
                 onResolveUI={handleResolveUI}
                 onAvatarClick={() => setShowAgentInfo(true)}
+                onOpenFile={handleOpenFile}
               />
-            </div>
-          )
+            )}
+          </div>
         )}
+
+        {/* Right WorkPane — tight Claude/Cursor-style: single vertical border, no gap, no card */}
+        <AnimatePresence initial={false}>
+          {showPreview && (
+            <motion.div
+              initial={{ opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 16 }}
+              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+              className={`flex flex-col overflow-hidden ${
+                previewMaximized ? 'flex-1' : 'flex-[1.3] min-w-[420px] max-w-[920px] border-l border-border/40'
+              }`}
+            >
+              <ArtifactViewer
+                openedFiles={openedFiles}
+                activeFile={activeFile}
+                onSelectFile={handleSelectFile}
+                onCloseFile={handleCloseFile}
+                onOpenFile={handleOpenFile}
+                fileContent={fileContent}
+                getFileLabel={getFileLabel}
+                allFiles={sessionData.files.length > 0 ? sessionData.files : (DEFAULT_INITIAL_FILES as FileNode[])}
+                outputFiles={sessionData.outputFiles}
+                previewUrl={null}
+                previewHtml={sessionData.previewHtml}
+                hasArtifact={!!sessionData.previewHtml || !!fileContent || openedFiles.length > 0}
+                onClosePanel={() => setShowPreview(false)}
+                maximized={previewMaximized}
+                onToggleMaximize={() => setPreviewMaximized(!previewMaximized)}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* ===== History Overlay ===== */}
