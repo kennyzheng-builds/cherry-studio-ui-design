@@ -15,6 +15,9 @@ export interface AssistantInfo {
   systemPrompt: string;
   knowledgeBases: { id: string; name: string }[];
   tools: { id: string; name: string; icon?: string }[];
+  /** Chat/Agent 融合 (V1): drives the conversation's starting mode + the
+   *  name-trailing icon in the unified list. Defaults to 'chat'. */
+  defaultMode?: 'chat' | 'agent';
 }
 
 // --- Branch Tree Types ---

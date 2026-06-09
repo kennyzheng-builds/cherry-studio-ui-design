@@ -13,7 +13,7 @@ import {
   Search, Paperclip, Hammer, Link, Zap,
   Settings2, NotebookPen, PenTool, Lightbulb, ScanLine, Eraser,
   PanelLeftOpen, PanelLeftClose,
-  MessageCircle, Image as ImageIcon,
+  MessageCircle, Image as ImageIcon, FolderOpen,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { copyToClipboard } from '@/app/utils/clipboard';
@@ -42,6 +42,13 @@ import {
   MOCK_ASSISTANTS, MOCK_MESSAGES, MOCK_TOPICS, MOCK_PARALLEL_MESSAGES,
   MOCK_MULTI_ASSISTANT_MESSAGES, ASSISTANT_EMOJI_MAP,
 } from '@/app/mock';
+import { SESSION_DATA_MAP } from '@/app/mock/agentData';
+import {
+  type ConvMode, type AgentCanvasData,
+  ModeSwitcher, TurnMetaLine, AgentTrace, ThinkingTrace,
+  EscalationCard, ModelGatePrompt, AgentCanvasView,
+  needsAgent, modelHasTools, suggestCompatibleModel, suggestWorkDir,
+} from './ChatAgentMode';
 
 // Infer provider ID from model name for BrandLogo
 function inferProviderId(model?: string, provider?: string): string {
@@ -1307,6 +1314,8 @@ function MessageBubble({ msg, onOpenPanel, onAvatarClick, onOpenArtifact, assist
   onRetryNav?: (msgId: string, index: number) => void;
 }) {
   const [ctxMenu, setCtxMenu] = useState(false);
+  // Chat/Agent 融合: per-turn meta-line expand state.
+  const [metaExpanded, setMetaExpanded] = useState(false);
 
   // Retry version handling: determine which version to display
   const retryVersions = msg.retryVersions || [];
@@ -1392,8 +1401,32 @@ function MessageBubble({ msg, onOpenPanel, onAvatarClick, onOpenArtifact, assist
           {modelDisplayName && <span className="text-xs text-muted-foreground/50">{modelDisplayName}</span>}
         </div>
 
-        {/* Thinking block */}
-        {displayMsg.thinking && <ThinkingBlock content={displayMsg.thinking} />}
+        {/* Chat/Agent 融合 — per-turn meta line (mode-anchored, minimal).
+            任务 → "Worked for Xs" + inline tool trace.
+            聊天 + thinking → "Thought for Xs" + inline thinking.
+            聊天 no-thinking → nothing (replies stay visually identical). */}
+        {displayMsg.turnMode === 'agent' ? (
+          <>
+            <TurnMetaLine mode="agent" duration={displayMsg.turnDuration || '8s'} expanded={metaExpanded} onToggle={() => setMetaExpanded(v => !v)} />
+            <AnimatePresence initial={false}>
+              {metaExpanded && (
+                <AgentTrace toolCalls={displayMsg.toolCalls} steps={displayMsg.steps} thinking={displayMsg.thinking} />
+              )}
+            </AnimatePresence>
+          </>
+        ) : displayMsg.turnMode === 'chat' ? (
+          displayMsg.turnDuration && displayMsg.thinking ? (
+            <>
+              <TurnMetaLine mode="chat" duration={displayMsg.turnDuration} expanded={metaExpanded} onToggle={() => setMetaExpanded(v => !v)} />
+              <AnimatePresence initial={false}>
+                {metaExpanded && <ThinkingTrace thinking={displayMsg.thinking} />}
+              </AnimatePresence>
+            </>
+          ) : null
+        ) : (
+          /* Non-融合 messages (existing mocks) keep the original thinking block. */
+          displayMsg.thinking && <ThinkingBlock content={displayMsg.thinking} />
+        )}
 
         {/* Content */}
         <div className="text-xs text-foreground leading-[1.75] py-1">
@@ -1560,6 +1593,12 @@ function MultiSelectPicker({
             <span className="truncate max-w-[100px]">
               {selectedAssistants.length > 1 ? `${selectedAssistants.length} 个助手` : activeAssistant?.name || '选择助手'}
             </span>
+            {/* Chat/Agent 融合 — defaultMode badge (⚡=任务向 / 💬=聊天向) */}
+            {selectedAssistants.length === 1 && activeAssistant && (
+              activeAssistant.defaultMode === 'agent'
+                ? <Zap size={10} className="text-cherry-primary-dark flex-shrink-0" />
+                : <MessageCircle size={10} className="text-muted-foreground/45 flex-shrink-0" />
+            )}
             {selectedAssistants.length > 1 && <span className="w-4 h-4 rounded-full bg-muted text-muted-foreground text-xs flex items-center justify-center flex-shrink-0">{selectedAssistants.length}</span>}
             <ChevronDown size={8} className={`text-muted-foreground/50 flex-shrink-0 transition-transform duration-100 ${open && mode === 'assistant' ? 'rotate-180' : ''}`} />
           </Button>
@@ -1626,6 +1665,19 @@ export function AssistantRunPage() {
   const [multiAssistant, setMultiAssistant] = useState(false);
   const [multiModel, setMultiModel] = useState(false);
 
+  // ─── Chat/Agent 融合 (V1) state ──────────────────────────────────────
+  // Sticky per-conversation mode (default 聊天). workDir sticks after escalation.
+  const [convMode, setConvMode] = useState<ConvMode>('chat');
+  const [convWorkDir, setConvWorkDir] = useState<string>('~/Projects');
+  // Right-canvas data (task products). Reuses FileExplorer/ArtifactViewer.
+  const [agentCanvas, setAgentCanvas] = useState<AgentCanvasData | null>(null);
+  // Inline escalation bridge: holds the carried message until the user confirms.
+  const [escalation, setEscalation] = useState<{ text: string; workDir: string } | null>(null);
+  // Model-compatibility gate prompt (anchored above the switcher).
+  const [showModelGate, setShowModelGate] = useState(false);
+  // Remembered tools-compatible model preference (decision 15).
+  const [rememberedToolsModel, setRememberedToolsModel] = useState<string | null>(null);
+
   // Topics
   const [topics, setTopics] = useState<AssistantTopic[]>(MOCK_TOPICS);
   const [activeTopicId, setActiveTopicId] = useState<string | null>('new-topic-init');
@@ -1664,6 +1716,9 @@ export function AssistantRunPage() {
       setRightPanel(null);
       setShowBranchTree(false);
       setShowChatSettings(false);
+      // Fresh topic must not inherit the previous 任务产物 canvas / bridge state.
+      setAgentCanvas(null);
+      setEscalation(null);
       return;
     }
     const newId = `new-topic-${Date.now()}-${newTopicCounter}`;
@@ -1685,11 +1740,30 @@ export function AssistantRunPage() {
     setRightPanel(null);
     setShowBranchTree(false);
     setShowChatSettings(false);
+    // Fresh topic must not inherit the previous 任务产物 canvas / bridge state.
+    setAgentCanvas(null);
+    setEscalation(null);
     setNewTopicCounter(c => c + 1);
   }, [newTopicCounter]);
 
   const currentAssistant = useMemo(() => MOCK_ASSISTANTS.find(a => a.id === selectedAssistants[0]) || MOCK_ASSISTANTS[0], [selectedAssistants]);
   const currentModel = useMemo(() => ASSISTANT_MODELS.find(m => m.id === selectedModels[0]) || ASSISTANT_MODELS[0], [selectedModels]);
+  // 任务 mode requires a tools-capable model (decision 14/15).
+  const toolsEnabled = useMemo(() => modelHasTools(selectedModels[0]), [selectedModels]);
+
+  // Conversation start mode follows the assistant's defaultMode (decision 16/17),
+  // and a fresh topic must not inherit the previous topic's sticky mode (decision 2:
+  // new session always defaults to its start mode, never carries over). Re-runs on
+  // assistant change AND on topic switch; the messages guard means it only applies to
+  // a fresh/empty conversation, so we never yank an in-progress one.
+  useEffect(() => {
+    if (messages.length > 0) return;
+    const wantAgent = currentAssistant.defaultMode === 'agent';
+    setConvMode(wantAgent && modelHasTools(selectedModels[0]) ? 'agent' : 'chat');
+    setEscalation(null);
+    setShowModelGate(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentAssistant.id, activeTopicId]);
   const currentAssistantEmoji = ASSISTANT_EMOJI_MAP[currentAssistant.name] || '🤖';
   const currentModelDisplayName = currentModel.name.split('/').pop() || currentModel.name;
 
@@ -1712,6 +1786,8 @@ export function AssistantRunPage() {
     setActiveArtifact(null);
     setShowArtifacts(false);
     setArtifactFullscreen(false);
+    setAgentCanvas(null);
+    setEscalation(null);
     setActiveBranchId('main');
   }, [currentAssistant]);
 
@@ -1884,6 +1960,9 @@ export function AssistantRunPage() {
     setRightPanel(null);
     setShowBranchTree(false);
     setShowChatSettings(false);
+    // Canvas reflects only the current conversation — close any stale 任务产物.
+    setAgentCanvas(null);
+    setEscalation(null);
     // Load parallel messages for the multi-model / multi-assistant topics
     if (id === 'topic-11') {
       setMessages(MOCK_PARALLEL_MESSAGES);
@@ -1918,29 +1997,10 @@ export function AssistantRunPage() {
   // RichComposer. Pre-seeded with one of each major category so the UI
   // demonstrates the design at a glance; new ones are appended via the
   // Paperclip button.
-  const [inlineAttachments, setInlineAttachments] = useState<ComposerAttachment[]>([
-    {
-      id: 'demo-img',
-      name: 'dashboard-mockup.png',
-      ext: 'png',
-      size: '1.8 MB',
-      previewUrl: 'https://images.unsplash.com/photo-1766934587214-86e21b3ae093?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=320',
-    },
-    {
-      id: 'demo-doc',
-      name: 'design-spec.md',
-      ext: 'md',
-      size: '4.2 KB',
-      snippet: '# 仪表盘设计规范\n\n- 主色调：#2563EB / #F59E0B\n- 字体：Inter, system-ui\n- 卡片圆角：12px ...',
-    },
-    {
-      id: 'demo-pdf',
-      name: '品牌指南.pdf',
-      ext: 'pdf',
-      size: '5.6 MB',
-      snippet: '完整的品牌识别系统手册，包含 logo 使用规范、配色系统与排版规则。',
-    },
-  ]);
+  // Empty by default so a first-time user sees a clean, breathing composer
+  // (the previous demo seeded 3 attachments that crammed the input — esp. now
+  // that the toolbar also carries the 聊天/任务 switcher + workDir chip).
+  const [inlineAttachments, setInlineAttachments] = useState<ComposerAttachment[]>([]);
 
   // Demo file pool that the Paperclip button cycles through when clicked
   const demoAttachmentPool = useRef<Omit<ComposerAttachment, 'id'>[]>([
@@ -2010,7 +2070,12 @@ export function AssistantRunPage() {
   }, [showPlusMenu]);
 
   // Inner send: actually pushes the user message and simulates a response
-  const performSend = useCallback((text: string) => {
+  // `modeOverride` lets callers (e.g. the escalation bridge) dispatch through a
+  // specific mode without waiting for the async `convMode` state to flip. This
+  // is what guarantees the bridged turn runs the SAME path as a normal 任务 send
+  // (→ "Worked for Xs" + canvas), instead of the stale chat path.
+  const performSend = useCallback((text: string, modeOverride?: ConvMode) => {
+    const turnMode = modeOverride ?? convMode;
     const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     const activeModel = ASSISTANT_MODELS.find(m => m.id === selectedModels[0]) || ASSISTANT_MODELS[0];
 
@@ -2071,22 +2136,68 @@ export function AssistantRunPage() {
         }]);
         setIsResponding(false);
       }, 800);
-    } else {
-      // Single response with thinking
+    } else if (turnMode === 'agent') {
+      // ─── 任务 mode: reply + "Worked for Xs" meta line + inline tool trace,
+      //     and open the right canvas with file tree / outputs (reuses agent mocks).
+      const session = SESSION_DATA_MAP['session-1'];
+      const duration = `${(6 + Math.random() * 6).toFixed(0)}s`;
       setTimeout(() => {
         setMessages(prev => [...prev, {
           id: `msg-${Date.now() + 1}`,
           role: 'assistant',
-          content: '收到，正在为你处理中...',
+          content: `已在 \`${convWorkDir}\` 内完成。生成了项目文件并跑通了基础脚手架，产物已放在右侧画布，可以展开本轮工具轨迹查看每一步。`,
           timestamp: ts,
-          thinking: '分析用户的请求内容...\n确定最佳回答策略...\n准备生成回复...',
+          turnMode: 'agent',
+          turnDuration: duration,
+          toolCalls: [
+            { name: 'fs.scan ' + convWorkDir, status: 'success', duration: '0.4s' },
+            { name: 'mkdir src/components', status: 'success', duration: '0.1s' },
+            { name: 'write App.tsx', status: 'success', duration: '0.3s' },
+            { name: 'pnpm install', status: 'success', duration: '4.1s' },
+            { name: 'vite build', status: 'success', duration: '2.2s' },
+          ],
+          steps: session.steps?.slice(0, 4),
           metadata: {
             sessionId: `sess-${Date.now()}`,
             model: activeModel.name,
             status: 'success',
             startTime: new Date().toLocaleString(),
-            duration: '2.3s',
-            tokens: { input: 128, output: 64, thinking: 32 },
+            duration,
+            tokens: { input: 512, output: 256 },
+            requestJson: '{}',
+            responseJson: '{}',
+          },
+        }]);
+        setIsResponding(false);
+        // Auto-open the canvas when there's a product.
+        setAgentCanvas({
+          files: session.files,
+          outputFiles: session.outputFiles,
+          fileContents: session.fileContents,
+          previewHtml: session.previewHtml,
+          workDir: convWorkDir,
+        });
+      }, 900);
+    } else {
+      // ─── 聊天 mode: plain reply. "Thought for Xs" only when thinking is on.
+      const thinking = reasoningLevel ? '分析用户的请求内容...\n确定最佳回答策略...\n准备生成回复...' : undefined;
+      const duration = '1.4s';
+      setTimeout(() => {
+        setMessages(prev => [...prev, {
+          id: `msg-${Date.now() + 1}`,
+          role: 'assistant',
+          content: '收到，这是基于当前上下文的回答。聊天模式只跟你说、不动你的电脑——需要真正动手时切到「任务模式」即可。',
+          timestamp: ts,
+          turnMode: 'chat',
+          turnDuration: thinking ? duration : undefined,
+          thinking,
+          metadata: {
+            sessionId: `sess-${Date.now()}`,
+            model: activeModel.name,
+            status: 'success',
+            startTime: new Date().toLocaleString(),
+            duration,
+            tokens: { input: 128, output: 64, thinking: thinking ? 32 : undefined },
             requestJson: '{}',
             responseJson: '{}',
           },
@@ -2094,12 +2205,27 @@ export function AssistantRunPage() {
         setIsResponding(false);
       }, 800);
     }
-  }, [selectedModels, selectedAssistants]);
+  }, [selectedModels, selectedAssistants, convMode, convWorkDir, reasoningLevel]);
 
-  // Public send: routes to queue when responding, else fires immediately
+  // Public send: routes to queue when responding, else fires immediately.
+  // The RichComposer is contentEditable — read its text as the source of truth,
+  // falling back to the `input` state (slash/prompt-seeded path).
   const handleSend = useCallback(() => {
-    const trimmed = input.trim();
+    const composerText = composerRef.current?.getText().trim() || '';
+    const trimmed = composerText || input.trim();
     if (!trimmed) return;
+
+    // ─── 聊天 mode: one-click escalation bridge. Only *suggest* when a sent
+    //     message touches real agent capability — never auto-switch (decision 10).
+    if (convMode === 'chat' && !escalation && needsAgent(trimmed)) {
+      setEscalation({ text: trimmed, workDir: suggestWorkDir(trimmed) });
+      composerRef.current?.clearText();
+      setInput('');
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
+      return;
+    }
+
+    composerRef.current?.clearText();
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     if (isResponding) {
@@ -2107,7 +2233,68 @@ export function AssistantRunPage() {
     } else {
       performSend(trimmed);
     }
-  }, [input, isResponding, performSend]);
+  }, [input, isResponding, performSend, convMode, escalation]);
+
+  // ─── Mode switcher handlers ──────────────────────────────────────────
+  const handleModeChange = useCallback((m: ConvMode) => {
+    setShowModelGate(false);
+    if (m === 'agent' && !modelHasTools(selectedModels[0])) {
+      // Locked — if we already remembered a compatible model, apply it silently.
+      if (rememberedToolsModel) {
+        setSelectedModels([rememberedToolsModel]);
+        setConvMode('agent');
+      } else {
+        setShowModelGate(true);
+      }
+      return;
+    }
+    setConvMode(m);
+    if (m === 'chat') setEscalation(null);
+  }, [selectedModels, rememberedToolsModel]);
+
+  // Locked 任务 segment clicked → open the model-compatibility gate.
+  const handleLockedClick = useCallback(() => setShowModelGate(true), []);
+
+  // Confirm escalation: switch to 任务 mode, stick workDir, carry the message.
+  const handleEscalationConfirm = useCallback((workDir: string) => {
+    if (!escalation) return;
+    const text = escalation.text;
+    setConvWorkDir(workDir);
+    setEscalation(null);
+    if (!modelHasTools(selectedModels[0])) {
+      // Carried message still needs a tools model — open the gate, keep the text queued.
+      setShowModelGate(true);
+      setEscalation({ text, workDir });
+      return;
+    }
+    setConvMode('agent');
+    // Dispatch through the agent path explicitly — don't rely on the async
+    // setConvMode above having flipped before this synchronous call (it hasn't).
+    performSend(text, 'agent');
+  }, [escalation, selectedModels, performSend]);
+
+  // Confirm model gate: swap to a compatible model, remember the preference.
+  const handleModelGateConfirm = useCallback(() => {
+    const suggested = suggestCompatibleModel(selectedModels[0]);
+    if (suggested) {
+      setSelectedModels([suggested.id]);
+      setRememberedToolsModel(suggested.id);
+    }
+    setShowModelGate(false);
+    setConvMode('agent');
+    // If a message was carried via the escalation bridge, send it now.
+    if (escalation) {
+      const text = escalation.text;
+      setConvWorkDir(escalation.workDir);
+      setEscalation(null);
+      performSend(text, 'agent');
+    }
+  }, [selectedModels, escalation, performSend]);
+
+  const gateTargetName = useMemo(
+    () => (suggestCompatibleModel(selectedModels[0])?.name.split('/').pop() || '兼容模型'),
+    [selectedModels],
+  );
 
   // Auto-flush queue when assistant becomes idle
   const queueRef = useRef(queuedMessages);
@@ -2363,7 +2550,7 @@ export function AssistantRunPage() {
                   </div>
                   <h2 className="text-sm text-foreground tracking-[-0.01em]">你好，有什么需要帮助的？</h2>
                   <p className="text-xs text-muted-foreground/60 text-center leading-[1.6] mt-1.5">
-                    向 {currentAssistant.name} 提问，支持生成文章、代码和可视化内���
+                    向 {currentAssistant.name} 提问，支持生成文章、代码和可视化内容
                   </p>
                 </motion.div>
               </div>
@@ -2424,13 +2611,34 @@ export function AssistantRunPage() {
                 )}
               </AnimatePresence>
 
+              {/* ─── Chat/Agent 融合 — inline escalation bridge (Chat → 任务) ─── */}
+              <AnimatePresence>
+                {escalation && (
+                  <div className="flex-shrink-0 px-4 pt-1">
+                    <EscalationCard
+                      defaultWorkDir={escalation.workDir}
+                      onConfirm={handleEscalationConfirm}
+                      onCancel={() => setEscalation(null)}
+                    />
+                  </div>
+                )}
+              </AnimatePresence>
+
               <div className="flex-shrink-0 px-4 pb-3">
-                <div className="relative rounded-xl border border-border/50 bg-background shadow-sm focus-within:border-border/50 transition-all duration-150">
+                <div className={`relative rounded-xl border shadow-sm transition-all duration-150 ${
+                  convMode === 'agent'
+                    ? 'border-cherry-primary/40 ring-1 ring-cherry-primary/40 bg-cherry-active-bg/40'
+                    : 'border-border/50 bg-background focus-within:border-border/50'
+                }`}>
                   <RichComposer
                     ref={composerRef}
                     attachments={inlineAttachments}
                     onRemoveAttachment={removeInlineAttachment}
-                    placeholder={isResponding ? '助手回复中，发送的消息将加入队列…' : (minimalInput ? '在这里输入消息，附件可以与文字混合 — @ 选择助手 / 插入 Prompt' : '在这里输入消息，附件可以与文字混合插入')}
+                    placeholder={isResponding
+                      ? '助手回复中，发送的消息将加入队列…'
+                      : convMode === 'agent'
+                        ? '描述要在你电脑上完成的任务，我会在工作目录里动手做…'
+                        : '问我任何问题，或让我在你电脑上动手做点什么…'}
                     onKeyDown={handleKeyDown}
                   />
                   {/* / Slash Prompt Picker */}
@@ -2831,6 +3039,34 @@ export function AssistantRunPage() {
                           </Tooltip>
                         );
                       })()}
+                      {/* ─── Chat/Agent 融合 — sticky 聊天/任务 mode switcher ─── */}
+                      <div className="w-px h-3.5 bg-border/40 mx-0.5" />
+                      <div className="relative">
+                        <ModeSwitcher
+                          mode={convMode}
+                          onChange={handleModeChange}
+                          toolsEnabled={toolsEnabled}
+                          onLockedClick={handleLockedClick}
+                        />
+                        <AnimatePresence>
+                          {showModelGate && (
+                            <ModelGatePrompt
+                              targetModelName={gateTargetName}
+                              onConfirm={handleModelGateConfirm}
+                              onCancel={() => setShowModelGate(false)}
+                            />
+                          )}
+                        </AnimatePresence>
+                      </div>
+                      {/* workDir chip — visible in 任务 mode (reuses project-dir idea) */}
+                      {convMode === 'agent' && (
+                        <Tooltip content="任务工作目录" side="top">
+                          <span className="inline-flex items-center gap-1 px-1.5 h-[22px] rounded-md bg-cherry-active-bg text-cherry-primary-dark text-xs font-mono ml-0.5">
+                            <FolderOpen size={11} />
+                            {convWorkDir}
+                          </span>
+                        </Tooltip>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
@@ -2887,6 +3123,31 @@ export function AssistantRunPage() {
             ))}
           </ChatInterface>
         </div>
+
+        {/* Right: Chat/Agent 融合 — 任务 canvas (file tree + outputs).
+            Auto-opens when a 任务 turn produces a product; closed in plain chat. */}
+        <AnimatePresence initial={false}>
+          {agentCanvas && !showArtifacts && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: artifactPanelWidth, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+              className="flex-shrink-0 min-w-0 relative flex"
+              style={{ width: artifactPanelWidth }}
+            >
+              <div
+                onMouseDown={handleArtifactResizeStart}
+                className="w-[6px] flex-shrink-0 cursor-col-resize group flex items-center justify-center relative z-10"
+              >
+                <div className="w-[2px] h-8 rounded-full bg-border/0 group-hover:bg-border/50 group-active:bg-foreground/20 transition-colors" />
+              </div>
+              <div className="flex-1 min-w-0 m-2 ml-0 rounded-2xl border border-border/30 bg-background shadow-lg overflow-hidden">
+                <AgentCanvasView data={agentCanvas} onClose={() => setAgentCanvas(null)} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Right: Artifacts */}
         <AnimatePresence initial={false}>

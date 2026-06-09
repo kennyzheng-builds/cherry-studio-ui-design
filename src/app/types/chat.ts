@@ -233,6 +233,11 @@ export interface Message {
   toolCall?: ToolCallData;
   generativeUI?: GenerativeUIData;
   steps?: WorkflowStep[];
+  // Chat/Agent 融合 (V1): the mode this turn ran in + its meta-line duration.
+  // 'agent' → "Worked for Xs"; 'chat' with a duration + thinking → "Thought for Xs".
+  turnMode?: 'chat' | 'agent';
+  turnDuration?: string;
+  toolCalls?: ToolCallData[];
   // Retry versions: array of alternative responses for this message slot
   retryVersions?: Message[];
   // Index of active retry version (0-based, undefined means original)
