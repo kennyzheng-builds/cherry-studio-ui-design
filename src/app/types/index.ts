@@ -97,6 +97,8 @@ export interface ResourceItem {
   updatedAt: string;
   enabled: boolean;
   hasUpdate?: boolean;
+  // Chat/Agent 融合 (V1): 助手运行环境 — 本地 / 云端(Stella)。默认 'local'。
+  runtime?: 'local' | 'cloud';
   // Prompt-specific
   content?: string;
   // File-based resources (skill / plugin)

@@ -18,6 +18,10 @@ export interface AssistantInfo {
   /** Chat/Agent 融合 (V1): drives the conversation's starting mode + the
    *  name-trailing icon in the unified list. Defaults to 'chat'. */
   defaultMode?: 'chat' | 'agent';
+  /** Chat/Agent 融合 (V1): where this assistant runs — 本地 or 云端(Stella).
+   *  Set per-assistant in settings; used to group/filter the topic list.
+   *  Defaults to 'local'. */
+  runtime?: 'local' | 'cloud';
 }
 
 // --- Branch Tree Types ---
@@ -56,4 +60,7 @@ export interface AssistantTopic {
   pinned?: boolean;
   tags?: string[];
   group?: string;
+  /** Chat/Agent 融合 (V1): runtime of this conversation, derived from its
+   *  assistant — used by the「运行环境」grouping in the topic list. */
+  runtime?: 'local' | 'cloud';
 }

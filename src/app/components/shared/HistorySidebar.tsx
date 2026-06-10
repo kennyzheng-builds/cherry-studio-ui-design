@@ -28,9 +28,11 @@ export interface HistoryItem {
    *  the row renders a small progress ring at the right edge. */
   kind?: 'chat' | 'task';
   progress?: number;
+  /** Chat/Agent 融合 (V1): 本地 / 云端(Stella) — enables「运行环境」grouping. */
+  runtime?: 'local' | 'cloud';
 }
 
-type GroupByMode = 'none' | 'status' | 'group' | 'time' | 'custom' | 'assistant' | 'tag';
+type GroupByMode = 'none' | 'status' | 'group' | 'time' | 'custom' | 'assistant' | 'tag' | 'runtime';
 
 const GROUP_BY_OPTIONS: { key: GroupByMode; label: string }[] = [
   { key: 'status', label: '状态' },
@@ -40,6 +42,7 @@ const GROUP_BY_OPTIONS: { key: GroupByMode; label: string }[] = [
 const TOPIC_GROUP_BY_OPTIONS: { key: GroupByMode; label: string }[] = [
   { key: 'time', label: '时间' },
   { key: 'assistant', label: '助手' },
+  { key: 'runtime', label: '运行环境' },
   { key: 'tag', label: '标签' },
   { key: 'group', label: '项目文件' },
 ];
@@ -625,6 +628,8 @@ export function HistorySidebar<T extends HistoryItem>({
         key = customGroupBy.getGroupKey(item);
       } else if (groupBy === 'assistant') {
         key = item.assistantName || '未指定助手';
+      } else if (groupBy === 'runtime') {
+        key = item.runtime === 'cloud' ? '云端' : '本地';
       } else if (groupBy === 'tag') {
         // For tag grouping, an item can appear in multiple groups
         const tags = item.tags && item.tags.length > 0 ? item.tags : ['未标记'];

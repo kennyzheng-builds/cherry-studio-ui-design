@@ -99,6 +99,7 @@ function assistantToResource(a: AssistantInfo, emoji: string): ResourceItem {
     model: a.model,
     tags: a.tags,
     enabled: true,
+    runtime: a.runtime ?? 'local',
     createdAt: a.updatedAt,
     updatedAt: a.updatedAt,
   };
@@ -1751,6 +1752,19 @@ export function AssistantRunPage() {
   // 任务 mode requires a tools-capable model (decision 14/15).
   const toolsEnabled = useMemo(() => modelHasTools(selectedModels[0]), [selectedModels]);
 
+  // Chat/Agent 融合: derive each topic's runtime (本地/云端) from its assistant
+  // so the topic list can group by「运行环境」(decision 21 — runtime is an
+  // assistant property; conversations inherit it).
+  const assistantRuntimeByName = useMemo(() => {
+    const m: Record<string, 'local' | 'cloud'> = {};
+    MOCK_ASSISTANTS.forEach(a => { m[a.name] = a.runtime ?? 'local'; });
+    return m;
+  }, []);
+  const topicsForSidebar = useMemo(
+    () => topics.map(t => ({ ...t, runtime: t.runtime ?? assistantRuntimeByName[t.assistantName] ?? 'local' })),
+    [topics, assistantRuntimeByName],
+  );
+
   // Conversation start mode follows the assistant's defaultMode (decision 16/17),
   // and a fresh topic must not inherit the previous topic's sticky mode (decision 2:
   // new session always defaults to its start mode, never carries over). Re-runs on
@@ -2442,7 +2456,7 @@ export function AssistantRunPage() {
             style={{ width: 220 }}
           >
             <HistorySidebar
-              items={topics}
+              items={topicsForSidebar}
               activeItemId={activeTopicId}
               onSelectItem={handleSelectTopic}
               onDeleteItem={handleDeleteTopic}

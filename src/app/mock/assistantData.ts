@@ -50,6 +50,7 @@ export const MOCK_ASSISTANTS: AssistantInfo[] = [
     tags: ['编程', '代码审查'],
     systemPrompt: '你是一位资深软件工程师，精通多种编程语言和框架。',
     defaultMode: 'agent',
+    runtime: 'cloud',
     knowledgeBases: [
       { id: 'kb-3', name: 'API Reference Docs' },
     ],
@@ -78,6 +79,7 @@ export const MOCK_ASSISTANTS: AssistantInfo[] = [
     tags: ['数据', '分析'],
     systemPrompt: '你是一位资深数据分析师，擅长数据清洗、统计分析和数据可视化。',
     defaultMode: 'agent',
+    runtime: 'cloud',
     knowledgeBases: [
       { id: 'kb-4', name: '数据分析方法论' },
     ],

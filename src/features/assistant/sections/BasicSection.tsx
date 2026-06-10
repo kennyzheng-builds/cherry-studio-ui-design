@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Check, Upload, Link2, Plus, Trash2, RotateCcw, Info } from 'lucide-react';
+import { X, Check, Upload, Link2, Plus, Trash2, RotateCcw, Info, Laptop, Cloud } from 'lucide-react';
 import type { ResourceItem } from '@/app/types';
 import { AVATAR_OPTIONS } from '@/app/config/constants';
 import { Button } from '@cherrystudio/ui/components/primitives/button';
@@ -68,6 +68,9 @@ export function BasicSection({ resource }: Props) {
 
   // Tags state — dropdown multi-select
   const [tags, setTags] = useState<string[]>(resource.tags || ['标签']);
+
+  // Chat/Agent 融合 (V1): per-assistant default runtime (本地/云端 Stella).
+  const [runtime, setRuntime] = useState<'local' | 'cloud'>(resource.runtime ?? 'local');
 
   const removeTag = (tag: string) => {
     setTags(prev => prev.filter(t => t !== tag));
@@ -181,6 +184,40 @@ export function BasicSection({ resource }: Props) {
           className="w-full min-h-[80px] px-3 py-2 rounded-lg border border-border/60 bg-accent/15 text-xs text-foreground placeholder:text-muted-foreground/60 shadow-none focus-visible:border-border focus-visible:ring-0 resize-none"
         />
       </FieldGroup>
+
+      {/* 运行环境 — 本地 / 云端(Stella). Per-assistant default; drives the
+          topic-list「运行环境」grouping (Chat/Agent 融合 V1, decision 21). */}
+      {(resource.type === 'assistant' || resource.type === 'agent') && (
+        <FieldGroup label="运行环境">
+          <div className="inline-flex items-center gap-1 p-0.5 rounded-lg border border-border/60 bg-accent/15">
+            {([
+              { key: 'local' as const, label: '本地', icon: Laptop },
+              { key: 'cloud' as const, label: '云端', icon: Cloud },
+            ]).map(opt => {
+              const Icon = opt.icon;
+              const active = runtime === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setRuntime(opt.key)}
+                  className={`flex items-center gap-1.5 px-3 h-7 rounded-md text-xs transition-colors ${
+                    active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Icon size={12} />
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1.5 text-xs text-muted-foreground/60">
+            {runtime === 'cloud'
+              ? '云端助手在服务器 7×24 运行，适合长时任务（Stella）。'
+              : '本地助手在你的电脑上运行，响应快、数据不出本机。'}
+          </p>
+        </FieldGroup>
+      )}
 
       {/* Tags — full width, same field styling */}
       <FieldGroup label="标签">
