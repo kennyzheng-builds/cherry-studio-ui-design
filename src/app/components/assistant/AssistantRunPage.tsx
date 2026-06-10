@@ -1670,6 +1670,10 @@ export function AssistantRunPage() {
   // Sticky per-conversation mode (default 聊天). workDir sticks after escalation.
   const [convMode, setConvMode] = useState<ConvMode>('chat');
   const [convWorkDir, setConvWorkDir] = useState<string>('~/Projects');
+  // Once a conversation has entered 任务 mode, it has an established work
+  // directory — keep the bottom workDir row visible even after switching back
+  // to 聊天 (per feedback). Pure-chat conversations never show it.
+  const [convHasWorkDir, setConvHasWorkDir] = useState<boolean>(false);
   // Right-canvas data (task products). Reuses FileExplorer/ArtifactViewer.
   const [agentCanvas, setAgentCanvas] = useState<AgentCanvasData | null>(null);
   // Inline escalation bridge: holds the carried message until the user confirms.
@@ -1772,8 +1776,9 @@ export function AssistantRunPage() {
   // a fresh/empty conversation, so we never yank an in-progress one.
   useEffect(() => {
     if (messages.length > 0) return;
-    const wantAgent = currentAssistant.defaultMode === 'agent';
-    setConvMode(wantAgent && modelHasTools(selectedModels[0]) ? 'agent' : 'chat');
+    const wantAgent = currentAssistant.defaultMode === 'agent' && modelHasTools(selectedModels[0]);
+    setConvMode(wantAgent ? 'agent' : 'chat');
+    setConvHasWorkDir(wantAgent); // fresh topic: workDir row only if it starts in 任务
     setEscalation(null);
     setShowModelGate(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2257,17 +2262,28 @@ export function AssistantRunPage() {
       if (rememberedToolsModel) {
         setSelectedModels([rememberedToolsModel]);
         setConvMode('agent');
+        setConvHasWorkDir(true);
       } else {
         setShowModelGate(true);
       }
       return;
     }
     setConvMode(m);
+    if (m === 'agent') setConvHasWorkDir(true);
     if (m === 'chat') setEscalation(null);
   }, [selectedModels, rememberedToolsModel]);
 
   // Locked 任务 segment clicked → open the model-compatibility gate.
   const handleLockedClick = useCallback(() => setShowModelGate(true), []);
+
+  // 「继续聊天」on the escalation card: stay in 聊天 mode and send the message
+  // anyway — never drop the user's message (it would be lost on a plain dismiss).
+  const handleEscalationContinueChat = useCallback(() => {
+    if (!escalation) return;
+    const text = escalation.text;
+    setEscalation(null);
+    performSend(text, 'chat');
+  }, [escalation, performSend]);
 
   // Confirm escalation: switch to 任务 mode, stick workDir, carry the message.
   const handleEscalationConfirm = useCallback((workDir: string) => {
@@ -2282,6 +2298,7 @@ export function AssistantRunPage() {
       return;
     }
     setConvMode('agent');
+    setConvHasWorkDir(true);
     // Dispatch through the agent path explicitly — don't rely on the async
     // setConvMode above having flipped before this synchronous call (it hasn't).
     performSend(text, 'agent');
@@ -2296,6 +2313,7 @@ export function AssistantRunPage() {
     }
     setShowModelGate(false);
     setConvMode('agent');
+    setConvHasWorkDir(true);
     // If a message was carried via the escalation bridge, send it now.
     if (escalation) {
       const text = escalation.text;
@@ -2632,7 +2650,7 @@ export function AssistantRunPage() {
                     <EscalationCard
                       defaultWorkDir={escalation.workDir}
                       onConfirm={handleEscalationConfirm}
-                      onCancel={() => setEscalation(null)}
+                      onContinueChat={handleEscalationContinueChat}
                     />
                   </div>
                 )}
@@ -3072,15 +3090,6 @@ export function AssistantRunPage() {
                           )}
                         </AnimatePresence>
                       </div>
-                      {/* workDir chip — visible in 任务 mode (reuses project-dir idea) */}
-                      {convMode === 'agent' && (
-                        <Tooltip content="任务工作目录" side="top">
-                          <span className="inline-flex items-center gap-1 px-1.5 h-[22px] rounded-md bg-cherry-active-bg text-cherry-primary-dark text-xs font-mono ml-0.5">
-                            <FolderOpen size={11} />
-                            {convWorkDir}
-                          </span>
-                        </Tooltip>
-                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
@@ -3128,6 +3137,35 @@ export function AssistantRunPage() {
                     </div>
                   </div>
                 </div>
+                {/* Chat/Agent 融合 — 工作目录行（输入框下方，沿用 Agent 的底部布局）。
+                    一旦进过任务模式就保留，即使切回聊天也不消失；纯聊天则不显示。 */}
+                {convHasWorkDir && (
+                  <div className="flex items-center px-1 mt-1.5">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button type="button"
+                          className="flex items-center gap-1.5 px-2 py-[3px] rounded-md text-xs text-muted-foreground/80 hover:text-foreground hover:bg-accent/40 transition-colors">
+                          <FolderOpen size={12} className="text-muted-foreground/80" strokeWidth={1.5} />
+                          <span className="font-mono">{convWorkDir}</span>
+                          <ChevronDown size={9} className="text-muted-foreground/50" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" align="start" className="w-[200px] p-1">
+                        <div className="text-xs text-muted-foreground/60 px-2 py-1">工作目录</div>
+                        {['~/Projects', '~/Desktop', '~/Documents', '~/Downloads'].map(d => (
+                          <button key={d} type="button" onClick={() => setConvWorkDir(d)}
+                            className={`w-full flex items-center gap-2 px-2 py-[6px] rounded-md text-left text-xs font-mono transition-colors ${
+                              d === convWorkDir ? 'bg-accent/40 text-foreground' : 'text-muted-foreground/80 hover:bg-accent/40'
+                            }`}>
+                            <FolderOpen size={12} className="text-muted-foreground/80 flex-shrink-0" strokeWidth={1.5} />
+                            <span className="flex-1 truncate">{d}</span>
+                            {d === convWorkDir && <Check size={11} className="text-foreground flex-shrink-0" />}
+                          </button>
+                        ))}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                )}
               </div>
               </>
             }

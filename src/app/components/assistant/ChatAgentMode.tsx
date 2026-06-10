@@ -69,8 +69,14 @@ export function suggestWorkDir(text: string): string {
 }
 
 // ===========================
-// Mode Switcher — segmented pill (💬 聊天 | ⚡ 任务)
+// Mode Switcher — single pill + upward dropdown list (IMA-style).
+// Shows the current mode; click to expand a list of modes with descriptions.
 // ===========================
+
+const MODE_OPTIONS: { key: ConvMode; title: string; desc: string }[] = [
+  { key: 'chat', title: '聊天模式', desc: '多轮问答、写作、查资料 — 快速且省，不动你的电脑' },
+  { key: 'agent', title: '任务模式', desc: '在你电脑上读写文件、跑命令，多轮自主完成并交付' },
+];
 
 export function ModeSwitcher({
   mode, onChange, toolsEnabled, onLockedClick,
@@ -79,48 +85,83 @@ export function ModeSwitcher({
   onChange: (m: ConvMode) => void;
   /** Whether the current conversation model supports tools (任务 requires it). */
   toolsEnabled: boolean;
-  /** Called when the user clicks the locked 任务 segment. */
+  /** Called when the user picks the locked 任务 option. */
   onLockedClick: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const isAgent = mode === 'agent';
+
+  const select = (key: ConvMode) => {
+    if (key === 'agent' && !toolsEnabled) { setOpen(false); onLockedClick(); return; }
+    onChange(key);
+    setOpen(false);
+  };
+
   return (
-    <div className="inline-flex items-center bg-accent/40 rounded-md p-[2px] gap-[2px]">
+    <div className="relative">
+      {/* Trigger pill — shows current mode */}
       <button
         type="button"
-        onClick={() => onChange('chat')}
-        className={`flex items-center gap-1 px-2 py-[3px] rounded-[5px] text-xs transition-all duration-100 ${
-          mode === 'chat'
-            ? 'bg-background text-foreground shadow-sm shadow-black/5'
-            : 'text-muted-foreground/60 hover:text-foreground'
+        onClick={() => setOpen(v => !v)}
+        className={`inline-flex items-center gap-1.5 px-2 py-[3px] rounded-md text-xs border transition-colors ${
+          open ? 'border-border/70 bg-accent/30' : 'border-border/50 bg-background hover:bg-accent/25'
         }`}
       >
-        <MessageCircle size={11} strokeWidth={1.6} />
-        <span>聊天</span>
+        {isAgent
+          ? <Zap size={12} strokeWidth={1.7} className="text-cherry-primary-dark" />
+          : <MessageCircle size={12} strokeWidth={1.7} className="text-muted-foreground" />}
+        <span className={isAgent ? 'text-cherry-primary-dark' : 'text-foreground/80'}>
+          {isAgent ? '任务模式' : '聊天模式'}
+        </span>
+        <ChevronDown size={9} className={`text-muted-foreground/50 transition-transform duration-100 ${open ? 'rotate-180' : ''}`} />
       </button>
-      {toolsEnabled ? (
-        <button
-          type="button"
-          onClick={() => onChange('agent')}
-          className={`flex items-center gap-1 px-2 py-[3px] rounded-[5px] text-xs transition-all duration-100 ${
-            mode === 'agent'
-              ? 'bg-cherry-primary text-white shadow-sm shadow-cherry-primary/25'
-              : 'text-muted-foreground/60 hover:text-foreground'
-          }`}
-        >
-          <Zap size={11} strokeWidth={1.6} />
-          <span>任务</span>
-        </button>
-      ) : (
-        <Tooltip content="当前模型不支持工具调用，换一个支持的模型即可解锁任务模式" side="top">
-          <button
-            type="button"
-            onClick={onLockedClick}
-            className="flex items-center gap-1 px-2 py-[3px] rounded-[5px] text-xs text-muted-foreground/35 cursor-pointer hover:text-muted-foreground/55 transition-colors"
-          >
-            <Lock size={9} strokeWidth={1.8} />
-            <span>任务</span>
-          </button>
-        </Tooltip>
-      )}
+
+      <AnimatePresence>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-[55]" onClick={() => setOpen(false)} />
+            <motion.div
+              initial={{ opacity: 0, y: 4, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 4, scale: 0.97 }}
+              transition={{ duration: 0.12 }}
+              className="absolute bottom-full left-0 mb-1.5 z-[56] w-[268px] bg-popover border border-border/40 rounded-xl shadow-2xl shadow-black/12 overflow-hidden p-1"
+            >
+              {MODE_OPTIONS.map(o => {
+                const active = mode === o.key;
+                const locked = o.key === 'agent' && !toolsEnabled;
+                const Icon = o.key === 'agent' ? Zap : MessageCircle;
+                return (
+                  <button
+                    key={o.key}
+                    type="button"
+                    onClick={() => select(o.key)}
+                    className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors ${
+                      active ? 'bg-cherry-active-bg' : 'hover:bg-accent/30'
+                    }`}
+                  >
+                    <Icon size={14} strokeWidth={1.6} className={`mt-[1px] flex-shrink-0 ${active ? 'text-cherry-primary-dark' : 'text-muted-foreground'}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-xs ${active ? 'text-cherry-primary-dark' : 'text-foreground/85'}`}>{o.title}</span>
+                        {locked && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground/50">
+                            <Lock size={8} strokeWidth={1.8} />需工具模型
+                          </span>
+                        )}
+                        {active && <Check size={12} className="ml-auto text-cherry-primary-dark flex-shrink-0" />}
+                      </div>
+                      <div className={`text-[11px] leading-[1.5] mt-0.5 ${active ? 'text-cherry-primary-dark/70' : 'text-muted-foreground/60'}`}>
+                        {o.desc}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -266,11 +307,12 @@ export function ThinkingTrace({ thinking }: { thinking: string }) {
 const WORKDIR_OPTIONS = ['~/Desktop', '~/Documents', '~/Projects', '~/Downloads'];
 
 export function EscalationCard({
-  defaultWorkDir, onConfirm, onCancel,
+  defaultWorkDir, onConfirm, onContinueChat,
 }: {
   defaultWorkDir: string;
   onConfirm: (workDir: string) => void;
-  onCancel: () => void;
+  /** Keep chat mode and send the message anyway — never drop the user's message. */
+  onContinueChat: () => void;
 }) {
   return (
     <motion.div
@@ -293,10 +335,10 @@ export function EscalationCard({
       </button>
       <button
         type="button"
-        onClick={onCancel}
-        className="px-1.5 py-[5px] rounded-lg text-xs text-muted-foreground/60 hover:text-foreground transition-colors flex-shrink-0"
+        onClick={onContinueChat}
+        className="px-2 py-[5px] rounded-lg text-xs text-muted-foreground/70 hover:text-foreground hover:bg-accent/30 transition-colors flex-shrink-0"
       >
-        取消
+        继续聊天
       </button>
     </motion.div>
   );
@@ -366,7 +408,9 @@ export interface AgentCanvasData {
 
 export function AgentCanvasView({ data, onClose }: { data: AgentCanvasData; onClose: () => void }) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [showExplorer, setShowExplorer] = useState(true);
+  // Collapsed by default — showing the file list alongside the preview is too
+  // cramped in the canvas width. User can toggle it open via ArtifactViewer.
+  const [showExplorer, setShowExplorer] = useState(false);
 
   const fileContent = selectedFile && !selectedFile.startsWith('output:')
     ? data.fileContents[selectedFile] ?? null
