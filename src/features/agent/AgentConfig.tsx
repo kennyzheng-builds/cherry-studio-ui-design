@@ -250,9 +250,6 @@ function AgentBasicSection({ resource }: { resource: ResourceItem }) {
   const [avatarUrl, setAvatarUrl] = useState('');
   const [avatarTab, setAvatarTab] = useState<'emoji' | 'image'>('emoji');
   const fileInputRef2 = useRef<HTMLInputElement>(null);
-  // Agent runtime type — drives how the agent executes (terminal-native
-  // Claude Code, Cherry's in-app runtime, or long-running background job)
-  const [agentType, setAgentType] = useState<'claude-code' | 'cherry-runtime' | 'long-running'>('cherry-runtime');
   return (
     <div className="max-w-3xl space-y-5">
       <div className="grid grid-cols-1 gap-3">
@@ -331,19 +328,6 @@ function AgentBasicSection({ resource }: { resource: ResourceItem }) {
           <Input value={name} onChange={e => setName(e.target.value)} placeholder="智能体名称"
             className="flex-1 min-w-0 h-9 px-3 py-1.5 rounded-lg border border-border/60 bg-accent/15 text-xs md:text-xs text-foreground focus-visible:border-border focus-visible:ring-0 shadow-none transition-all" />
           </div>
-        </div>
-        <div className="min-w-0">
-          <label className="text-sm text-muted-foreground mb-1.5 block">类型</label>
-          <Select value={agentType} onValueChange={(v) => setAgentType(v as typeof agentType)}>
-            <SelectTrigger className="w-full !h-9 px-3 text-xs border border-border/60 bg-accent/15 hover:bg-accent/40 rounded-lg">
-              <SelectValue placeholder="类型" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="claude-code">Claude Code</SelectItem>
-              <SelectItem value="cherry-runtime">Cherry Runtime</SelectItem>
-              <SelectItem value="long-running">Long Running</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
       </div>
       <FieldGroup label="简介">
