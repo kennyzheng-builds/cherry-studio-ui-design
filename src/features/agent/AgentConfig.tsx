@@ -1544,13 +1544,13 @@ function AgentNotesSection() {
 // in-app agent runtime (fast, single-shot daily tasks); 增强 maps to the
 // Claude Code runtime (longer-running, handles complex multi-step work).
 const RUN_MODES = [
-  { id: 'regular'  as const, name: '常规', runtime: 'Cherry Agent', desc: '速度快，适合日常任务', icon: Zap },
-  { id: 'enhanced' as const, name: '增强', runtime: 'Claude Code',  desc: '运行更久，驾驭复杂任务', icon: Rocket },
+  { id: 'regular' as const, name: '常规', runtime: 'Claude Code', desc: '能力完整，适合复杂任务', icon: Rocket },
+  { id: 'fast'    as const, name: '快速', runtime: 'AI SDK',      desc: '速度快，适合日常任务', icon: Zap },
 ];
 
 function AgentAdvancedSection() {
   const [maxRounds, setMaxRounds] = useState(10);
-  const [runMode, setRunMode] = useState<'regular' | 'enhanced'>('enhanced');
+  const [runMode, setRunMode] = useState<'regular' | 'fast'>('regular');
   return (
     <div className="max-w-3xl space-y-5">
       <div>
