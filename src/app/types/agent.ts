@@ -57,6 +57,10 @@ export interface AgentSession {
   kind?: 'chat' | 'task';
   /** 0-100. Only consulted for kind === 'task' && status === 'active'. */
   progress?: number;
+  /** Set when this session was spawned by running a scheduled task — drives
+   *  the "来自定时任务" return bar atop the conversation. */
+  scheduledTaskId?: string;
+  scheduledTaskName?: string;
 }
 
 // --- File Explorer ---

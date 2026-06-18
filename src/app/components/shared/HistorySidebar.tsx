@@ -77,6 +77,17 @@ interface HistorySidebarProps<T extends HistoryItem> {
    * onQuickStart with that option's id. */
   quickStartOptions?: { id: string; label: string; avatar?: string; description?: string }[];
   onQuickStart?: (id: string) => void;
+  /** Optional fixed nav rows pinned above the item list (e.g. a 定时任务
+   *  entry on the Agent view). Rendered between the search box and the
+   *  scrollable list; never filtered by search. */
+  navEntries?: {
+    id: string;
+    label: string;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+    count?: number;
+    active?: boolean;
+    onClick: () => void;
+  }[];
 }
 
 // ===========================
@@ -563,6 +574,7 @@ export function HistorySidebar<T extends HistoryItem>({
   onRenameGroup,
   quickStartOptions,
   onQuickStart,
+  navEntries,
 }: HistorySidebarProps<T>) {
   const [searchQuery, setSearchQuery] = useState('');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; itemId: string } | null>(null);
@@ -805,6 +817,34 @@ export function HistorySidebar<T extends HistoryItem>({
           placeholder={`搜索${entityLabel}...`}
         />
       </div>
+
+      {/* Pinned nav entries (e.g. 定时任务) — above the scrollable list */}
+      {navEntries && navEntries.length > 0 && (
+        <div className="px-1.5 pb-1 flex-shrink-0 space-y-px">
+          {navEntries.map(entry => {
+            const Icon = entry.icon;
+            return (
+              <Button
+                key={entry.id}
+                size="inline"
+                variant="ghost"
+                onClick={entry.onClick}
+                className={`w-full justify-start gap-2 px-2.5 py-[6px] font-normal rounded-md ${
+                  entry.active
+                    ? 'bg-accent/40 text-foreground'
+                    : 'text-foreground/90 hover:bg-accent/40 hover:text-foreground'
+                }`}
+              >
+                <Icon size={13} className={entry.active ? 'text-cherry-primary' : 'text-muted-foreground/60'} />
+                <span className="text-sm flex-1 text-left truncate">{entry.label}</span>
+                {typeof entry.count === 'number' && (
+                  <span className="text-xs text-muted-foreground/40 tabular-nums">{entry.count}</span>
+                )}
+              </Button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Item List */}
       <div className="flex-1 overflow-y-auto px-1.5 py-1 space-y-px [&::-webkit-scrollbar]:w-[2px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-foreground/10">

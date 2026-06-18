@@ -32,6 +32,7 @@ import { useActiveSkillJob } from '@/app/stores/skillJobStore';
 import { WorkflowPanel } from './WorkflowPanel';
 import type { AgentChatMessage, AgentSession, AgentSessionData } from '@/app/types/agent';
 import { SessionHistoryPage, type SessionDisplayMode } from './SessionHistoryPage';
+import { ScheduledTasksPage } from './ScheduledTasksPage';
 import { HistorySidebar } from '@/app/components/shared/HistorySidebar';
 import { CreateAgentWizard } from '@/app/components/shared/CreateAgentWizard';
 import { RecycleBinConfirmDialog } from '@/app/components/shared/RecycleBinConfirmDialog';
@@ -56,9 +57,10 @@ function agentToResource(a: typeof AVAILABLE_AGENTS[0]): ResourceItem {
     updatedAt: a.updatedAt,
   };
 }
+import { toast } from 'sonner';
 import {
   MOCK_SESSIONS, MODELS, SESSION_DATA_MAP, EMPTY_SESSION_DATA,
-  DEFAULT_INITIAL_FILES,
+  DEFAULT_INITIAL_FILES, MOCK_SCHEDULED_TASKS, type ScheduledTask,
 } from '@/app/mock';
 
 // Backward-compatible aliases
@@ -1431,6 +1433,17 @@ export function AgentRunPage({ onBack }: { onBack?: () => void } = {}) {
   const [showPlan, setShowPlan] = useState(false);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
   const [showSaveAsSkill, setShowSaveAsSkill] = useState(false);
+  // 定时任务 view — reached from the entry pinned atop the session list.
+  const [showScheduledTasks, setShowScheduledTasks] = useState(false);
+  // When set, the 定时任务 view opens straight into that task's detail
+  // (used by the "来自定时任务" return bar). null = land on the list.
+  const [scheduledDetailId, setScheduledDetailId] = useState<string | null>(null);
+  const openScheduledTasks = useCallback((detailId: string | null = null) => {
+    setShowPreview(false);
+    setPreviewMaximized(false);
+    setScheduledDetailId(detailId);
+    setShowScheduledTasks(true);
+  }, []);
   const activeSkillJob = useActiveSkillJob();
   // Sessions where the user dismissed the inline "Save as Skill?"
   // callout. Per cherry-studio#15029 we surface this contextually after
@@ -1475,6 +1488,7 @@ export function AgentRunPage({ onBack }: { onBack?: () => void } = {}) {
   }, [activeSessionId]);
 
   const handleSelectSession = useCallback((id: string) => {
+    setShowScheduledTasks(false);
     setActiveSessionId(id);
     setSessions(prev => prev.map(s => s.id === id && s.unread ? { ...s, unread: false } : s));
     const data = SESSION_DATA_MAP[id];
@@ -1487,6 +1501,7 @@ export function AgentRunPage({ onBack }: { onBack?: () => void } = {}) {
   }, []);
 
   const handleNewSession = useCallback(() => {
+    setShowScheduledTasks(false);
     setActiveSessionId(null);
     setShowPreview(false);
     setPreviewMaximized(false);
@@ -1495,6 +1510,7 @@ export function AgentRunPage({ onBack }: { onBack?: () => void } = {}) {
   }, []);
 
   const handleNewSessionForAgent = useCallback((agentName: string) => {
+    setShowScheduledTasks(false);
     const agent = AVAILABLE_AGENTS.find(a => a.name === agentName);
     if (agent) setSelectedAgent(agent);
     const newId = `new-${Date.now()}`;
@@ -1515,6 +1531,44 @@ export function AgentRunPage({ onBack }: { onBack?: () => void } = {}) {
     setPreviewMaximized(false);
     setShowExplorer(false);
     setSelectedFile(null);
+  }, []);
+
+  // Fire a scheduled task once now: spin up a live session attached to the
+  // task's agent (so it groups under that agent / its folder in the list),
+  // seed it with the task prompt, then jump into it.
+  const handleRunScheduledTask = useCallback((task: ScheduledTask) => {
+    const agent = AVAILABLE_AGENTS.find(a => a.name === task.agentName);
+    if (agent) setSelectedAgent(agent);
+    const newId = `task-run-${Date.now()}`;
+    const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const newSession: AgentSession = {
+      id: newId,
+      title: task.name,
+      agentName: task.agentName,
+      agentIcon: agent?.avatar ?? task.agentAvatar,
+      lastMessage: task.prompt,
+      timestamp: ts,
+      messageCount: 1,
+      status: 'active',
+      kind: 'task',
+      progress: 8,
+      unread: true,
+      group: task.runMode === 'channel' ? task.channel : undefined,
+      scheduledTaskId: task.id,
+      scheduledTaskName: task.name,
+    };
+    setSessions(prev => [newSession, ...prev]);
+    setLocalMessages(prev => ({
+      ...prev,
+      [newId]: [{ id: `${newId}-u`, role: 'user', content: task.prompt, timestamp: ts }],
+    }));
+    setActiveSessionId(newId);
+    setShowScheduledTasks(false);
+    setShowPreview(false);
+    setPreviewMaximized(false);
+    setShowExplorer(false);
+    setSelectedFile(null);
+    toast.success(`已启动「${task.name}」`, { description: `已在「${task.agentName}」下新建运行会话` });
   }, []);
 
   const { moveToBin: moveToRecycleBin, retentionDays: recycleRetentionDays } = useRecycleBin();
@@ -1855,6 +1909,16 @@ export function AgentRunPage({ onBack }: { onBack?: () => void } = {}) {
               onExpand={() => historySidebar.expand()}
               onClose={historySidebar.hide}
               entityLabel="会话"
+              navEntries={[{
+                id: 'scheduled-tasks',
+                label: '定时任务',
+                icon: Clock,
+                count: MOCK_SCHEDULED_TASKS.length,
+                active: showScheduledTasks,
+                // Land on the list (close any artifact preview so the page
+                // isn't squished — handled inside openScheduledTasks).
+                onClick: () => openScheduledTasks(null),
+              }]}
               showStatusDot
               customGroupBy={{
                 label: '智能体',
@@ -1886,7 +1950,28 @@ export function AgentRunPage({ onBack }: { onBack?: () => void } = {}) {
             : { flex: '1 1 0%' }
         }
       >
+        {showScheduledTasks ? (
+          <ScheduledTasksPage onRunTask={handleRunScheduledTask} initialDetailId={scheduledDetailId} />
+        ) : (
+        <>
         {headerJSX}
+
+      {/* ===== "来自定时任务" return bar — only on sessions spawned by a run ===== */}
+      {activeSession?.scheduledTaskId && (
+        <div className="px-3 pt-2 pb-0.5 flex-shrink-0">
+          <button
+            onClick={() => openScheduledTasks(activeSession.scheduledTaskId ?? null)}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-border/40 bg-muted/20 hover:bg-accent/40 transition-colors text-left group"
+          >
+            <Clock size={14} className="text-muted-foreground/60 flex-shrink-0" />
+            <span className="text-sm text-foreground/80 flex-1 truncate">
+              来自定时任务
+              {activeSession.scheduledTaskName ? <span className="text-muted-foreground/50"> · {activeSession.scheduledTaskName}</span> : null}
+            </span>
+            <ChevronRight size={14} className="text-muted-foreground/40 group-hover:text-muted-foreground/70 transition-colors" />
+          </button>
+        </div>
+      )}
 
       {/* ===== Main Content (chat panel only — artifact moved out) ===== */}
       <div className="flex flex-1 min-h-0 pl-2 min-w-0">
@@ -1934,6 +2019,8 @@ export function AgentRunPage({ onBack }: { onBack?: () => void } = {}) {
           )}
         </div>
       </div>
+        </>
+        )}
       </div>
 
       {/* ===== Artifact Panel — moved to outer level, side-by-side with title section ===== */}
