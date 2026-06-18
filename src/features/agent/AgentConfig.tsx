@@ -13,7 +13,7 @@ import {
   Upload, Link2,
   Send, MessageCircle, Github, Info,
   Cable, Plug, LayoutGrid, Blocks,
-  Users2,
+  Users2, Rocket,
 } from 'lucide-react';
 import { EmailAuthWizard } from '@/features/collaboration/components/EmailAuthWizard';
 import { useCollab } from '@/features/collaboration/CollabContext';
@@ -1556,8 +1556,17 @@ function AgentNotesSection() {
   );
 }
 
+// 运行模式 — picks the runtime that backs the agent. 常规 maps to Cherry's
+// in-app agent runtime (fast, single-shot daily tasks); 增强 maps to the
+// Claude Code runtime (longer-running, handles complex multi-step work).
+const RUN_MODES = [
+  { id: 'regular'  as const, name: '常规', runtime: 'Cherry Agent', desc: '速度快，适合日常任务', icon: Zap },
+  { id: 'enhanced' as const, name: '增强', runtime: 'Claude Code',  desc: '运行更久，驾驭复杂任务', icon: Rocket },
+];
+
 function AgentAdvancedSection() {
   const [maxRounds, setMaxRounds] = useState(10);
+  const [runMode, setRunMode] = useState<'regular' | 'enhanced'>('enhanced');
   return (
     <div className="max-w-3xl space-y-5">
       <div>
@@ -1565,6 +1574,35 @@ function AgentAdvancedSection() {
         <Slider min={1} max={100} step={1} value={[maxRounds]} onValueChange={([v]) => setMaxRounds(v)} />
         <div className="flex justify-between mt-1"><span className="text-xs text-muted-foreground/50">1</span><span className="text-xs text-muted-foreground/50">100</span></div>
         <p className="text-xs text-muted-foreground/50 mt-2">{"每次会话中智能体与工具交互的最大轮次数。达到上限后将停止执行并返回当前结果。"}</p>
+      </div>
+
+      <div>
+        <label className="text-sm text-muted-foreground mb-1.5 block">{"运行模式"}</label>
+        <div className="grid grid-cols-2 gap-3">
+          {RUN_MODES.map(mode => {
+            const active = runMode === mode.id;
+            const ModeIcon = mode.icon;
+            return (
+              <button key={mode.id} type="button" onClick={() => setRunMode(mode.id)}
+                aria-pressed={active}
+                className={`relative text-left rounded-xl border p-3.5 transition-colors ${
+                  active
+                    ? 'border-primary/50 bg-primary/5'
+                    : 'border-border/60 bg-accent/15 hover:border-border hover:bg-accent/30'
+                }`}>
+                {active && (
+                  <Check size={14} className="absolute top-3 right-3 text-primary" strokeWidth={2.5} />
+                )}
+                <div className="flex items-center gap-2 mb-1">
+                  <ModeIcon size={15} className={active ? 'text-primary' : 'text-muted-foreground'} />
+                  <span className="text-sm font-medium text-foreground">{mode.name}</span>
+                  <span className="text-xs font-mono text-muted-foreground/60">{mode.runtime}</span>
+                </div>
+                <p className="text-xs text-muted-foreground/70">{mode.desc}</p>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
